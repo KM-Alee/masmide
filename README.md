@@ -1,6 +1,5 @@
 # masmide
 
-[![Crates.io](https://img.shields.io/crates/v/masmide.svg)](https://crates.io/crates/masmide)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/KM-Alee/masmide/actions/workflows/ci.yml/badge.svg)](https://github.com/KM-Alee/masmide/actions/workflows/ci.yml)
 
