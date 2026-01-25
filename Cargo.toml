@@ -1,0 +1,34 @@
+[package]
+name = "masmide"
+version = "0.1.0"
+edition = "2021"
+authors = ["Khawaja Ali <kali.bscs24seecs@seecs.com>"]
+description = "A TUI IDE for MASM development on Linux using JWasm, MinGW-w64, and Wine"
+license = "MIT"
+repository = "https://github.com/KM-Alee/masmide"
+homepage = "https://github.com/KM-Alee/masmide"
+readme = "README.md"
+keywords = ["masm", "assembly", "tui", "ide", "jwasm"]
+categories = ["development-tools", "command-line-utilities"]
+exclude = [
+    "test/",
+    ".github/",
+    ".zencoder/",
+    ".zenflow/",
+    "Irvine/Examples/",
+]
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+toml = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+directories = "5.0"
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+arboard = "3.2"  # System clipboard support
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1

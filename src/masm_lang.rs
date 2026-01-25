@@ -1,0 +1,56 @@
+//! Shared MASM language definitions for syntax highlighting and autocomplete
+
+/// MASM instruction keywords
+pub const KEYWORDS: &[&str] = &[
+    "mov", "movsx", "movzx", "lea", "xchg", "push", "pop", "pushad", "popad", "pushfd", "popfd",
+    "pusha", "popa", "add", "sub", "mul", "imul", "div", "idiv", "inc", "dec", "neg", "adc", "sbb",
+    "and", "or", "xor", "not", "shl", "shr", "sal", "sar", "rol", "ror", "rcl", "rcr", "cmp",
+    "test", "jmp", "je", "jne", "jz", "jnz", "jg", "jge", "jl", "jle", "ja", "jae", "jb", "jbe",
+    "jc", "jnc", "jo", "jno", "js", "jns", "jp", "jnp", "jcxz", "jecxz", "jrcxz", "loop", "loope",
+    "loopne", "loopz", "loopnz", "call", "ret", "retn", "retf", "enter", "leave", "movs", "movsb",
+    "movsw", "movsd", "cmps", "cmpsb", "cmpsw", "cmpsd", "scas", "scasb", "scasw", "scasd", "lods",
+    "lodsb", "lodsw", "lodsd", "stos", "stosb", "stosw", "stosd", "rep", "repe", "repne", "repz",
+    "repnz", "clc", "stc", "cmc", "cld", "std", "cli", "sti", "lahf", "sahf", "cbw", "cwd", "cdq",
+    "cwde", "nop", "hlt", "int", "iret", "in", "out", "xlat", "xlatb", "fld", "fst", "fstp",
+    "fadd", "fsub", "fmul", "fdiv", "fcom", "fcomp", "movaps", "movups", "addps", "subps", "mulps",
+    "divps",
+];
+
+/// x86 registers
+pub const REGISTERS: &[&str] = &[
+    "eax", "ebx", "ecx", "edx", "esi", "edi", "esp", "ebp", "eip", "eflags", "ax", "bx", "cx",
+    "dx", "si", "di", "sp", "bp", "ip", "flags", "al", "ah", "bl", "bh", "cl", "ch", "dl", "dh",
+    "cs", "ds", "es", "fs", "gs", "ss", "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rsp", "rbp",
+    "rip", "rflags", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "r8d", "r9d", "r10d",
+    "r11d", "r12d", "r13d", "r14d", "r15d", "r8w", "r9w", "r10w", "r11w", "r12w", "r13w", "r14w",
+    "r15w", "r8b", "r9b", "r10b", "r11b", "r12b", "r13b", "r14b", "r15b", "st", "st0", "st1",
+    "st2", "st3", "st4", "st5", "st6", "st7", "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5",
+    "xmm6", "xmm7",
+];
+
+/// MASM directives
+pub const DIRECTIVES: &[&str] = &[
+    ".data", ".code", ".stack", ".model", ".386", ".486", ".586", ".686", ".mmx", ".xmm",
+    ".const", ".data?", "proc", "endp", "end", "include", "includelib", "extern", "extrn",
+    "public", "proto", "invoke", "macro", "endm", "local", "uses", "segment", "ends", "assume",
+    "org", "align", "even", "if", "else", "elseif", "endif", "ifdef", "ifndef", "equ", "textequ",
+    "option", "title", "subtitle", ".exit", "exit",
+];
+
+/// MASM type keywords
+pub const TYPE_KEYWORDS: &[&str] = &[
+    "byte", "sbyte", "word", "sword", "dword", "sdword", "qword", "sqword", "real4", "real8",
+    "real10", "tbyte", "fword", "oword", "xmmword", "ymmword", "ptr", "offset", "addr", "sizeof",
+    "lengthof", "type", "dup", "near", "far", "short", "flat", "stdcall", "c", "syscall", "pascal",
+    "fortran", "basic",
+];
+
+/// Irvine32 library functions for autocomplete
+pub const IRVINE32_FUNCTIONS: &[&str] = &[
+    "WriteString", "WriteChar", "WriteDec", "WriteInt", "WriteHex", "WriteHexB", "WriteBin",
+    "WriteBinB", "Crlf", "ReadString", "ReadChar", "ReadDec", "ReadInt", "ReadHex", "ReadKey",
+    "Clrscr", "Gotoxy", "GetMaxXY", "GetTextColor", "SetTextColor", "WaitMsg", "Delay",
+    "GetMseconds", "Randomize", "Random32", "RandomRange", "DumpRegs", "DumpMem", "DumpStack",
+    "Str_length", "Str_copy", "Str_compare", "Str_ucase", "Str_trim", "CreateOutputFile",
+    "OpenInputFile", "CloseFile", "ReadFromFile", "WriteToFile",
+];

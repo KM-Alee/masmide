@@ -1,0 +1,33 @@
+# Build artifacts
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# MASM build outputs
+*.exe
+*.obj
+*.o
+*.err
+*.lst
+*.map
+
+# Temporary files
+tmp_*
+*.tmp
+*.bak
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Environment
+.env
+.env.local
