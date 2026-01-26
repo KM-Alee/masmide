@@ -409,8 +409,8 @@ main() {
     echo
     echo -e "${BOLD}╔═══════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BOLD}║                                                           ║${NC}"
-    echo -e "${BOLD}║   ${CYAN}masmide${NC}${BOLD} - TUI IDE for MASM Development on Linux    ║${NC}"
-    echo -e "${BOLD}║                     Installer v${VERSION}                       ║${NC}"
+    echo -e "${BOLD}║   ${CYAN}masmide${NC}${BOLD} - TUI IDE for MASM Development on Linux         ║${NC}"
+    echo -e "${BOLD}║                     Installer v${VERSION}                      ║${NC}"
     echo -e "${BOLD}║                                                           ║${NC}"
     echo -e "${BOLD}╚═══════════════════════════════════════════════════════════╝${NC}"
     echo

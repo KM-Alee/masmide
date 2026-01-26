@@ -1,62 +1,70 @@
-# masmide
+<h1 align="center">masmide</h1>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/KM-Alee/masmide/actions/workflows/ci.yml/badge.svg)](https://github.com/KM-Alee/masmide/actions/workflows/ci.yml)
+=======
+<p align="center">
+  <strong>A modern TUI IDE for x86 Assembly development on Linux</strong>
+</p>
 
-A Terminal User Interface (TUI) IDE for MASM (Microsoft Macro Assembler) development on Linux. Write, build, and run x86 assembly programs using JWasm, MinGW-w64, and Wine.
 
-![masmide screenshot](https://raw.githubusercontent.com/KM-Alee/masmide/main/assets/screenshot.png)
+<p align="center">
+  <a href="https://github.com/KM-Alee/masmide/releases/latest"><img src="https://img.shields.io/github/v/release/KM-Alee/masmide?style=flat-square&color=blue" alt="Release"></a>
+  <a href="https://crates.io/crates/masmide"><img src="https://img.shields.io/crates/v/masmide?style=flat-square&color=orange" alt="Crates.io"></a>
+  <a href="https://github.com/KM-Alee/masmide/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/KM-Alee/masmide/ci.yml?style=flat-square" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
+</p>
 
-## Features
+<p align="center">
+  Write, build, and run MASM programs without leaving the terminal.<br>
+  Powered by JWasm, MinGW-w64, and Wine.
+</p>
 
-- 📝 **Syntax Highlighting** - Full MASM syntax support with customizable themes
-- 🔧 **Build Integration** - One-key build with JWasm and MinGW-w64 linker
-- ▶️ **Run with Wine** - Execute Windows PE binaries directly
-- 📁 **File Tree** - Navigate projects with keyboard-driven file browser
-- 🔍 **Search** - Find and replace across files
-- 💡 **Autocomplete** - Context-aware completion for MASM instructions and Irvine32 procedures
-- 📚 **Inline Documentation** - Hover docs for instructions and library procedures
-- 🎨 **Themes** - Dark, light, and Dracula themes included
-- ⌨️ **Vim-like Navigation** - Optional vim keybindings for editor
+---
 
-## Installation
+<p align="center">
+  <img src="https://raw.githubusercontent.com/KM-Alee/masmide/main/assets/screenshot.png" alt="Screenshot" width="800">
+</p>
 
-### Quick Install (Recommended)
+## ✨ Features
 
-The easiest way to install masmide with all dependencies:
+| Feature | Description |
+|---------|-------------|
+| 🎨 **Syntax Highlighting** | Full MASM syntax support with multiple themes (Dark, Light, Gruvbox, Dracula) |
+| ⚡ **One-Key Build** | Press `F5` to build and run instantly |
+| 💡 **Smart Autocomplete** | Context-aware completion for instructions, registers, and Irvine32 procedures |
+| 📖 **Inline Documentation** | Hover over any instruction to see its description |
+| 📁 **File Explorer** | Navigate your project with a keyboard-driven file tree |
+| 🔍 **Search & Replace** | Find text across files with regex support |
+| ⌨️ **Vim Keybindings** | Navigate and edit like a pro |
+| 🔧 **Configurable** | Per-project settings via `.masmide.toml` |
+
+## 🚀 Quick Install
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/KM-Alee/masmide/main/scripts/install-remote.sh | bash
 ```
 
-This will automatically:
-- Download the latest prebuilt binary
-- Install dependencies (mingw-w64, wine, jwasm)
-- Set up the Irvine32 library
-- Create default configuration
+This installs everything: masmide, JWasm, MinGW-w64, Wine, and the Irvine32 library.
 
-### Download Prebuilt Binary
+<details>
+<summary><strong>Other installation methods</strong></summary>
 
-Download from [GitHub Releases](https://github.com/KM-Alee/masmide/releases/latest):
+### From GitHub Releases
 
-| Architecture | Description |
-|-------------|-------------|
-| `x86_64` | Standard Linux (Intel/AMD 64-bit) |
-| `aarch64` | ARM 64-bit (Raspberry Pi 4, etc.) |
-| `x86_64-musl` | Static binary (Alpine Linux, etc.) |
+Download the [latest release](https://github.com/KM-Alee/masmide/releases/latest) for your architecture:
+
+| Binary | Platform |
+|--------|----------|
+| `masmide-*-linux-x86_64.tar.gz` | Intel/AMD 64-bit |
+| `masmide-*-linux-aarch64.tar.gz` | ARM64 (Raspberry Pi 4, etc.) |
+| `masmide-*-linux-x86_64-musl.tar.gz` | Static binary (Alpine, etc.) |
 
 ```bash
-# Download and extract
-tar -xzf masmide-v*-linux-x86_64.tar.gz
-cd masmide-v*-linux-x86_64
-
-# Run the included installer
-sudo ./install.sh
+tar -xzf masmide-*.tar.gz && cd masmide-* && sudo ./install.sh
 ```
 
 ### From crates.io
-
-If you have Rust installed:
 
 ```bash
 cargo install masmide
@@ -66,181 +74,102 @@ cargo install masmide
 
 ```bash
 git clone https://github.com/KM-Alee/masmide.git
-cd masmide
-./install.sh  # Installs deps + builds + installs
+cd masmide && ./install.sh
 ```
 
-### Manual Prerequisites
+</details>
 
-If you prefer to install dependencies manually:
-
-**Arch Linux:**
-```bash
-sudo pacman -S mingw-w64-gcc wine
-yay -S jwasm  # or paru -S jwasm
-```
-
-**Ubuntu/Debian:**
-```bash
-sudo apt install mingw-w64 wine
-# JWasm: build from https://github.com/JWasm/JWasm
-```
-
-### Uninstall
+## 📦 Quick Start
 
 ```bash
-# If installed via install script
-./uninstall.sh
+# Create a new project
+masmide --new hello
+cd hello
 
-# If installed via cargo
-cargo uninstall masmide
-```
-
-### Irvine32 Library Setup
-
-This repository includes the Irvine32 library files in the `Irvine/` directory. The install script automatically sets these up, or you can manually copy them:
-
-```bash
-# Create library directories
-sudo mkdir -p /usr/local/lib/irvine /usr/local/include/irvine
-
-# Copy library files
-sudo cp Irvine/*.lib /usr/local/lib/irvine/
-sudo cp Irvine/*.inc /usr/local/include/irvine/
-```
-
-## Quick Start
-
-**Create a new project:**
-```bash
-masmide --new myproject
-cd myproject
+# Open the IDE
 masmide
 ```
 
-**Open an existing directory:**
-```bash
-cd your-asm-project
-masmide
-```
+Press `F5` to build and run your program.
 
-**Open a specific file:**
-```bash
-masmide path/to/file.asm
-```
+## ⌨️ Keybindings
 
-## Keybindings
+### Essential
 
-### Global
 | Key | Action |
 |-----|--------|
-| `Ctrl+Q` | Quit |
-| `Ctrl+S` | Save file |
-| `Ctrl+B` | Build project |
-| `Ctrl+R` | Run executable |
-| `Ctrl+Shift+B` | Build and run |
-| `Ctrl+P` | Command palette |
-| `Ctrl+F` | Find in file |
-| `Ctrl+Shift+F` | Find in project |
-| `Ctrl+G` | Go to line |
-| `Tab` | Switch focus (editor/file tree/output) |
+| `F5` | Build & Run |
+| `F6` | Build only |
+| `Ctrl+S` | Save |
+| `:q` | Quit |
 | `F1` | Help |
+| `Tab` | Switch panel |
 
-### Editor
+### Navigation
+
 | Key | Action |
 |-----|--------|
-| `Ctrl+Z` | Undo |
-| `Ctrl+Y` | Redo |
-| `Ctrl+C` | Copy |
-| `Ctrl+X` | Cut |
-| `Ctrl+V` | Paste |
-| `Ctrl+A` | Select all |
-| `Ctrl+D` | Duplicate line |
-| `Ctrl+/` | Toggle comment |
-| `Home/End` | Line start/end |
-| `Ctrl+Home/End` | File start/end |
+| `h` `j` `k` `l` | Move cursor (Vim-style) |
+| `gg` | Go to first line |
+| `G` | Go to last line |
+| `:42` | Go to line 42 |
+| `Ctrl+F` | Search |
+
+### Editing
+
+| Key | Action |
+|-----|--------|
+| `i` | Insert mode |
+| `v` | Visual mode |
+| `Esc` | Normal mode |
+| `u` | Undo |
+| `Ctrl+R` | Redo |
+| `dd` | Delete line |
+| `yy` | Copy line |
+| `p` | Paste |
 
 ### File Tree
+
 | Key | Action |
 |-----|--------|
-| `Enter` | Open file/toggle folder |
+| `Enter` | Open / Expand |
 | `n` | New file |
 | `N` | New folder |
-| `d` | Delete |
 | `r` | Rename |
+| `d` | Delete |
 
-## Configuration
+## ⚙️ Configuration
 
-masmide looks for a `.masmide.toml` file in your project root. Create one to customize build settings:
+Create `.masmide.toml` in your project root:
 
 ```toml
 [build]
-# Path to JWasm executable (default: "jwasm")
 assembler = "jwasm"
-
-# Assembler flags
-asm_flags = ["-coff"]
-
-# Path to MinGW linker (default: "x86_64-w64-mingw32-ld")
-linker = "x86_64-w64-mingw32-ld"
-
-# Linker flags
-link_flags = ["-mi386pe", "--subsystem", "console"]
-
-# Library search paths (Irvine32 libs)
-lib_paths = ["/usr/local/lib/irvine", "./Irvine"]
-
-# Libraries to link
+linker = "i686-w64-mingw32-ld"
+lib_paths = ["/usr/local/lib/irvine"]
+include_paths = ["/usr/local/include/irvine"]
 libs = ["Irvine32", "Kernel32", "User32"]
 
-# Include paths for assembler
-include_paths = ["/usr/local/include/irvine", "./Irvine"]
-
 [editor]
-# Tab width (default: 4)
+theme = "gruvbox"    # dark, light, gruvbox, dracula
 tab_width = 4
-
-# Use spaces instead of tabs
 use_spaces = true
 
-# Show line numbers
-line_numbers = true
-
-# Theme: "dark", "light", "dracula"
-theme = "dark"
-
 [run]
-# Command to run the executable (default: "wine")
 runner = "wine"
 ```
 
-## Project Structure
-
-A typical masmide project:
-
-```
-myproject/
-├── .masmide.toml    # Project configuration
-├── main.asm         # Main assembly file
-├── Irvine/          # (optional) Local Irvine library copy
-│   ├── Irvine32.inc
-│   ├── Irvine32.lib
-│   └── ...
-└── README.md
-```
-
-## Example Program
+## 📝 Example Program
 
 ```asm
-; Hello World - MASM with Irvine32
 INCLUDE Irvine32.inc
 
 .data
-    message BYTE "Hello, World!", 0
+    msg BYTE "Hello from masmide!", 0
 
 .code
 main PROC
-    mov  edx, OFFSET message
+    mov  edx, OFFSET msg
     call WriteString
     call Crlf
     exit
@@ -248,55 +177,66 @@ main ENDP
 END main
 ```
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
-### "jwasm: command not found"
-Install JWasm from your package manager or build from source:
+<details>
+<summary><strong>jwasm: command not found</strong></summary>
+
+Build from source:
 ```bash
 git clone https://github.com/JWasm/JWasm.git
-cd JWasm
-make -f GccUnix.mak
-sudo cp jwasm /usr/local/bin/
+cd JWasm && make -f GccUnix.mak
+sudo cp build/GccUnixR/jwasm /usr/local/bin/
 ```
+</details>
 
-### "cannot find -lIrvine32"
-Ensure the Irvine library is installed:
+<details>
+<summary><strong>cannot find -lIrvine32</strong></summary>
+
+Run the installer or manually copy libraries:
 ```bash
+sudo mkdir -p /usr/local/lib/irvine
 sudo cp Irvine/*.lib /usr/local/lib/irvine/
 ```
-And add the path to your `.masmide.toml`:
-```toml
-[build]
-lib_paths = ["/usr/local/lib/irvine"]
-```
+</details>
 
-### Wine errors
-Ensure Wine is properly configured:
+<details>
+<summary><strong>Wine errors</strong></summary>
+
+Configure Wine:
 ```bash
-winecfg  # Configure Wine
-wine --version  # Verify installation
+winecfg
 ```
 
-### Build fails with linker errors
-Check that MinGW-w64 is installed for 32-bit targets:
+For 32-bit executables, ensure wine32 is installed:
 ```bash
-# Arch Linux
-sudo pacman -S mingw-w64-gcc
+# Debian/Ubuntu
+sudo dpkg --add-architecture i386
+sudo apt install wine32
+```
+</details>
 
-# Ubuntu/Debian  
-sudo apt install gcc-mingw-w64-i686
+## 🗑️ Uninstall
+
+```bash
+./uninstall.sh
+# or
+cargo uninstall masmide
 ```
 
-## Contributing
+## 🤝 Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## License
+## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT © [KM-Alee](https://github.com/KM-Alee)
 
-## Acknowledgments
+---
 
-- [Irvine32 Library](http://asmirvine.com/) by Kip Irvine
-- [JWasm](https://github.com/JWasm/JWasm) - Open source MASM-compatible assembler
-- [Ratatui](https://github.com/ratatui-org/ratatui) - TUI framework for Rust
+<p align="center">
+  <strong>Acknowledgments</strong><br>
+  <a href="http://asmirvine.com/">Irvine32</a> •
+  <a href="https://github.com/JWasm/JWasm">JWasm</a> •
+  <a href="https://github.com/ratatui-org/ratatui">Ratatui</a>
+</p>
