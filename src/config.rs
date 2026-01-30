@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::theme::Theme;
 
@@ -183,7 +183,7 @@ impl Default for ProjectConfig {
 }
 
 impl ProjectConfig {
-    pub fn load(project_dir: &PathBuf) -> Result<Self> {
+    pub fn load(project_dir: &Path) -> Result<Self> {
         let config_path = project_dir.join(".masmide.toml");
 
         if config_path.exists() {
@@ -195,7 +195,7 @@ impl ProjectConfig {
         }
     }
 
-    pub fn save(&self, project_dir: &PathBuf) -> Result<()> {
+    pub fn save(&self, project_dir: &Path) -> Result<()> {
         let config_path = project_dir.join(".masmide.toml");
         let content = toml::to_string_pretty(self)?;
         fs::write(config_path, content)?;

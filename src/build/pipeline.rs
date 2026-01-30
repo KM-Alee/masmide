@@ -1,6 +1,6 @@
 use crate::config::{Config, ProjectConfig};
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub struct BuildOutput {
@@ -28,14 +28,14 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    pub fn new(config: &Config, project_config: &ProjectConfig, project_dir: &PathBuf) -> Self {
+    pub fn new(config: &Config, project_config: &ProjectConfig, project_dir: &Path) -> Self {
         Self {
             jwasm_path: config.toolchain.jwasm_path.clone(),
             linker_path: config.toolchain.linker_path.clone(),
             wine_path: config.toolchain.wine_path.clone(),
             irvine_lib_path: config.toolchain.irvine_lib_path.clone(),
             irvine_inc_path: config.toolchain.irvine_inc_path.clone(),
-            project_dir: project_dir.clone(),
+            project_dir: project_dir.to_path_buf(),
             output_name: project_config.output_name.clone(),
             libs: project_config.libs.clone(),
             last_exe: None,
@@ -92,11 +92,12 @@ impl Pipeline {
         for line in jwasm_stdout.lines().chain(jwasm_stderr.lines()) {
             let lower = line.to_lowercase();
             // Keep only actual error/warning messages, skip banner and info
-            if lower.contains("error") || lower.contains("warning") {
-                if !line.contains("JWasm") && !line.contains("Copyright") {
-                    stderr_log.push_str(line);
-                    stderr_log.push('\n');
-                }
+            if (lower.contains("error") || lower.contains("warning"))
+                && !line.contains("JWasm")
+                && !line.contains("Copyright")
+            {
+                stderr_log.push_str(line);
+                stderr_log.push('\n');
             }
         }
 
@@ -177,9 +178,11 @@ impl Pipeline {
         // Validate paths to prevent command injection
         let wine_path_str = self.wine_path.to_string_lossy();
         let exe_path_str = exe_path.to_string_lossy();
-        
+
         // Reject paths with shell metacharacters
-        let dangerous_chars = ['\'', '"', '`', '$', '\\', ';', '&', '|', '>', '<', '(', ')', '{', '}', '\n'];
+        let dangerous_chars = [
+            '\'', '"', '`', '$', '\\', ';', '&', '|', '>', '<', '(', ')', '{', '}', '\n',
+        ];
         if wine_path_str.chars().any(|c| dangerous_chars.contains(&c)) {
             anyhow::bail!("Wine path contains invalid characters");
         }
@@ -192,11 +195,7 @@ impl Pipeline {
         let result = Command::new("script")
             .arg("-q") // quiet
             .arg("-c") // command
-            .arg(format!(
-                "'{}' '{}'",
-                wine_path_str,
-                exe_path_str
-            ))
+            .arg(format!("'{}' '{}'", wine_path_str, exe_path_str))
             .arg(&tmp_file)
             .current_dir(&self.project_dir)
             .output()

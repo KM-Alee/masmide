@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticSeverity {
@@ -59,7 +59,7 @@ impl Diagnostic {
 /// - `/path/to/file.asm(20): error A2006: undefined symbol : myLabel`
 /// - `Fatal error A1106: Cannot open file: "test/main.asm"` (file-level error)
 /// - `test/main.asm(15) : error A2008: syntax error` (stdout format)
-pub fn parse_jwasm_output(output: &str, project_dir: &PathBuf) -> Vec<Diagnostic> {
+pub fn parse_jwasm_output(output: &str, project_dir: &Path) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
     for line in output.lines() {
@@ -78,7 +78,7 @@ pub fn parse_jwasm_output(output: &str, project_dir: &PathBuf) -> Vec<Diagnostic
 
 /// Parse fatal/file-level errors without line numbers
 /// Format: `Fatal error A1106: message` or `error A1000: message`
-fn parse_jwasm_fatal_error(line: &str, project_dir: &PathBuf) -> Option<Diagnostic> {
+fn parse_jwasm_fatal_error(line: &str, project_dir: &Path) -> Option<Diagnostic> {
     let line = line.trim();
     let lower = line.to_lowercase();
 
@@ -130,7 +130,7 @@ fn parse_jwasm_fatal_error(line: &str, project_dir: &PathBuf) -> Option<Diagnost
     Some(diag)
 }
 
-fn parse_jwasm_line(line: &str, project_dir: &PathBuf) -> Option<Diagnostic> {
+fn parse_jwasm_line(line: &str, project_dir: &Path) -> Option<Diagnostic> {
     // Pattern: filename(line): error/warning Axxxx: message
     // Or: filename(line) : error/warning Axxxx: message
 
@@ -211,22 +211,19 @@ fn parse_jwasm_line(line: &str, project_dir: &PathBuf) -> Option<Diagnostic> {
 }
 
 /// Get diagnostics for a specific file
-pub fn diagnostics_for_file<'a>(
-    diagnostics: &'a [Diagnostic],
-    file: &PathBuf,
-) -> Vec<&'a Diagnostic> {
-    diagnostics.iter().filter(|d| &d.file == file).collect()
+pub fn diagnostics_for_file<'a>(diagnostics: &'a [Diagnostic], file: &Path) -> Vec<&'a Diagnostic> {
+    diagnostics.iter().filter(|d| d.file == file).collect()
 }
 
 /// Get diagnostic for a specific line in a file (if any)
 pub fn diagnostic_for_line<'a>(
     diagnostics: &'a [Diagnostic],
-    file: &PathBuf,
+    file: &Path,
     line: usize,
 ) -> Option<&'a Diagnostic> {
     diagnostics
         .iter()
-        .find(|d| &d.file == file && d.line == line)
+        .find(|d| d.file == file && d.line == line)
 }
 
 /// Count errors and warnings

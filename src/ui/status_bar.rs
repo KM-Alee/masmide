@@ -139,17 +139,16 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         Span::raw("")
     };
 
-    let msg_span = Span::styled(
-        status_msg.clone(),
-        Style::default().fg(if cursor_diagnostic.is_some() {
-            match cursor_diagnostic.unwrap().severity {
-                DiagnosticSeverity::Error => theme.ui.diagnostic_error.to_color(),
-                DiagnosticSeverity::Warning => theme.ui.diagnostic_warning.to_color(),
-            }
-        } else {
-            theme.ui.status_bar_fg.to_color()
-        }),
-    );
+    let msg_color = if let Some(diag) = cursor_diagnostic {
+        match diag.severity {
+            DiagnosticSeverity::Error => theme.ui.diagnostic_error.to_color(),
+            DiagnosticSeverity::Warning => theme.ui.diagnostic_warning.to_color(),
+        }
+    } else {
+        theme.ui.status_bar_fg.to_color()
+    };
+
+    let msg_span = Span::styled(status_msg.clone(), Style::default().fg(msg_color));
 
     // Calculate remaining space for right-aligned cursor position
     let left_len = mode_str.len()

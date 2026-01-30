@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub struct Toolchain {
@@ -9,11 +9,7 @@ pub struct Toolchain {
 }
 
 impl Toolchain {
-    pub fn detect(
-        jwasm_path: &PathBuf,
-        linker_path: &PathBuf,
-        wine_path: &PathBuf,
-    ) -> Result<Self> {
+    pub fn detect(jwasm_path: &Path, linker_path: &Path, wine_path: &Path) -> Result<Self> {
         let jwasm = Self::find_executable(jwasm_path, "jwasm")?;
         let linker = Self::find_executable(linker_path, "x86_64-w64-mingw32-ld")?;
         let wine = Self::find_executable(wine_path, "wine")?;
@@ -25,17 +21,17 @@ impl Toolchain {
         })
     }
 
-    fn find_executable(configured: &PathBuf, name: &str) -> Result<PathBuf> {
+    fn find_executable(configured: &Path, name: &str) -> Result<PathBuf> {
         // First try the configured path
         if configured.exists() {
-            return Ok(configured.clone());
+            return Ok(configured.to_path_buf());
         }
 
         // If it's just a name, try to find it in PATH
         let configured_str = configured.to_string_lossy();
         if !configured_str.contains('/') {
             if let Ok(output) = Command::new("which")
-                .arg(&configured_str.to_string())
+                .arg(configured_str.to_string())
                 .output()
             {
                 if output.status.success() {

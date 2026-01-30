@@ -215,6 +215,71 @@ impl EditorState {
         }
     }
 
+    fn clamp_to_char_boundary(s: &str, idx: usize) -> usize {
+        let idx = idx.min(s.len());
+        if s.is_char_boundary(idx) {
+            return idx;
+        }
+
+        // Search left for the nearest boundary.
+        let mut i = idx;
+        while i > 0 {
+            i -= 1;
+            if s.is_char_boundary(i) {
+                return i;
+            }
+        }
+        0
+    }
+
+    fn prev_char_boundary(s: &str, idx: usize) -> usize {
+        let idx = Self::clamp_to_char_boundary(s, idx);
+        if idx == 0 {
+            return 0;
+        }
+
+        // Find the start byte offset of the previous char.
+        let mut i = idx - 1;
+        while i > 0 && !s.is_char_boundary(i) {
+            i -= 1;
+        }
+        i
+    }
+
+    fn next_char_boundary(s: &str, idx: usize) -> usize {
+        let idx = Self::clamp_to_char_boundary(s, idx);
+        if idx >= s.len() {
+            return s.len();
+        }
+
+        let ch = s[idx..].chars().next().unwrap_or('\0');
+        (idx + ch.len_utf8()).min(s.len())
+    }
+
+    fn char_index_at_byte(s: &str, byte_idx: usize) -> usize {
+        let byte_idx = Self::clamp_to_char_boundary(s, byte_idx);
+        s[..byte_idx].chars().count()
+    }
+
+    fn byte_index_of_char(s: &str, char_idx: usize) -> usize {
+        if char_idx == 0 {
+            return 0;
+        }
+        match s.char_indices().nth(char_idx) {
+            Some((b, _)) => b,
+            None => s.len(),
+        }
+    }
+
+    fn set_cursor_x_char_boundary(buf: &mut Buffer) {
+        if buf.cursor_y >= buf.lines.len() {
+            buf.cursor_x = 0;
+            return;
+        }
+        let line = &buf.lines[buf.cursor_y];
+        buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
+    }
+
     // Accessor for current buffer
     fn buf(&self) -> &Buffer {
         &self.buffers[self.active_buffer]
@@ -295,28 +360,32 @@ impl EditorState {
     }
 
     pub fn insert_char(&mut self, c: char) {
-        let (should_push, line_num, col) = {
+        let (should_push, line_num, _col_byte, col_char) = {
             let buf = self.buf_mut();
-            if buf.cursor_y < buf.lines.len() {
-                let line = &mut buf.lines[buf.cursor_y];
-                if buf.cursor_x <= line.len() {
-                    let ln = buf.cursor_y;
-                    let cl = buf.cursor_x;
-                    line.insert(buf.cursor_x, c);
-                    buf.cursor_x += 1;
-                    buf.modified = true;
-                    (true, ln, cl)
-                } else {
-                    (false, 0, 0)
-                }
-            } else {
-                (false, 0, 0)
+            if buf.cursor_y >= buf.lines.len() {
+                return;
             }
+
+            let line = &mut buf.lines[buf.cursor_y];
+            buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
+            if buf.cursor_x > line.len() {
+                return;
+            }
+
+            let ln = buf.cursor_y;
+            let col_b = buf.cursor_x;
+            let col_c = Self::char_index_at_byte(line, col_b);
+
+            line.insert(col_b, c);
+            buf.cursor_x = col_b + c.len_utf8();
+            buf.modified = true;
+            (true, ln, col_b, col_c)
         };
+
         if should_push {
             self.undo_stack.push(EditorAction::InsertChar {
                 line: line_num,
-                col,
+                col: col_char,
                 ch: c,
             });
         }
@@ -328,19 +397,21 @@ impl EditorState {
     }
 
     pub fn insert_newline_with_indent(&mut self, auto_indent: bool) {
-        let (line_num, col) = {
+        let (line_num, col_char) = {
             let buf = self.buf_mut();
             if buf.cursor_y >= buf.lines.len() {
                 return;
             }
 
             let ln = buf.cursor_y;
-            let cl = buf.cursor_x;
             let current_line = &buf.lines[buf.cursor_y];
-            let remainder = current_line[buf.cursor_x..].to_string();
-            buf.lines[buf.cursor_y] = current_line[..buf.cursor_x].to_string();
+            buf.cursor_x = Self::clamp_to_char_boundary(current_line, buf.cursor_x);
+            let col_b = buf.cursor_x;
+            let col_c = Self::char_index_at_byte(current_line, col_b);
 
-            // Calculate indentation
+            let remainder = current_line[col_b..].to_string();
+            buf.lines[buf.cursor_y] = current_line[..col_b].to_string();
+
             let indent = if auto_indent {
                 Self::calculate_indent(&buf.lines[buf.cursor_y])
             } else {
@@ -352,12 +423,12 @@ impl EditorState {
                 .insert(buf.cursor_y, format!("{}{}", indent, remainder));
             buf.cursor_x = indent.len();
             buf.modified = true;
-            (ln, cl)
+            (ln, col_c)
         };
 
         self.undo_stack.push(EditorAction::SplitLine {
             line: line_num,
-            col,
+            col: col_char,
         });
         self.clear_search();
     }
@@ -384,36 +455,53 @@ impl EditorState {
     pub fn backspace(&mut self) {
         let action = {
             let buf = self.buf_mut();
-            if buf.cursor_x > 0 {
+            if buf.cursor_y >= buf.lines.len() {
+                None
+            } else if buf.cursor_x > 0 {
                 let line = &mut buf.lines[buf.cursor_y];
-                let ch = line.chars().nth(buf.cursor_x - 1).unwrap_or(' ');
-                let line_num = buf.cursor_y;
-                let col = buf.cursor_x - 1;
-                line.remove(buf.cursor_x - 1);
-                buf.cursor_x -= 1;
-                buf.modified = true;
-                Some(EditorAction::DeleteChar {
-                    line: line_num,
-                    col,
-                    ch,
-                })
+                buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
+                let start = Self::prev_char_boundary(line, buf.cursor_x);
+                let end = buf.cursor_x;
+
+                if start == end {
+                    None
+                } else {
+                    let ch = line[start..end].chars().next().unwrap_or(' ');
+                    let line_num = buf.cursor_y;
+                    let col_char = Self::char_index_at_byte(line, start);
+
+                    line.drain(start..end);
+                    buf.cursor_x = start;
+                    buf.modified = true;
+
+                    Some(EditorAction::DeleteChar {
+                        line: line_num,
+                        col: col_char,
+                        ch,
+                    })
+                }
             } else if buf.cursor_y > 0 {
                 let current_line = buf.lines.remove(buf.cursor_y);
                 let line_num = buf.cursor_y;
                 buf.cursor_y -= 1;
-                buf.cursor_x = buf.lines[buf.cursor_y].len();
-                let col = buf.cursor_x;
-                buf.lines[buf.cursor_y].push_str(&current_line);
+
+                let prev_line = &mut buf.lines[buf.cursor_y];
+                let join_col_char = prev_line.chars().count();
+                prev_line.push_str(&current_line);
+
+                buf.cursor_x = prev_line.len();
                 buf.modified = true;
+
                 Some(EditorAction::JoinLines {
                     line: line_num - 1,
-                    col,
+                    col: join_col_char,
                     deleted_content: current_line,
                 })
             } else {
                 None
             }
         };
+
         if let Some(act) = action {
             self.undo_stack.push(act);
         }
@@ -423,40 +511,65 @@ impl EditorState {
     pub fn delete_char(&mut self) {
         let action = {
             let buf = self.buf_mut();
-            if buf.cursor_y < buf.lines.len() {
+            if buf.cursor_y >= buf.lines.len() {
+                None
+            } else {
                 let line_len = buf.lines[buf.cursor_y].len();
-                if buf.cursor_x < line_len {
-                    let ch = buf.lines[buf.cursor_y]
-                        .chars()
-                        .nth(buf.cursor_x)
-                        .unwrap_or(' ');
-                    let line_num = buf.cursor_y;
-                    let col = buf.cursor_x;
-                    buf.lines[buf.cursor_y].remove(buf.cursor_x);
+                let cursor_y = buf.cursor_y;
+
+                let cursor_x = {
+                    let line_ref = &buf.lines[cursor_y];
+                    Self::clamp_to_char_boundary(line_ref, buf.cursor_x)
+                };
+                buf.cursor_x = cursor_x;
+
+                if cursor_x < line_len {
+                    let end = {
+                        let line_ref = &buf.lines[cursor_y];
+                        Self::next_char_boundary(line_ref, cursor_x)
+                    };
+
+                    if end <= cursor_x {
+                        None
+                    } else {
+                        let ch = {
+                            let line_ref = &buf.lines[cursor_y];
+                            line_ref[cursor_x..end].chars().next().unwrap_or(' ')
+                        };
+                        let col_char = {
+                            let line_ref = &buf.lines[cursor_y];
+                            Self::char_index_at_byte(line_ref, cursor_x)
+                        };
+
+                        {
+                            let line_mut = &mut buf.lines[cursor_y];
+                            line_mut.drain(cursor_x..end);
+                        }
+
+                        buf.modified = true;
+                        Some(EditorAction::DeleteChar {
+                            line: cursor_y,
+                            col: col_char,
+                            ch,
+                        })
+                    }
+                } else if cursor_y + 1 < buf.lines.len() {
+                    let next_line = buf.lines.remove(cursor_y + 1);
+                    let join_col_char = buf.lines[cursor_y].chars().count();
+                    buf.lines[cursor_y].push_str(&next_line);
                     buf.modified = true;
-                    Some(EditorAction::DeleteChar {
-                        line: line_num,
-                        col,
-                        ch,
-                    })
-                } else if buf.cursor_y + 1 < buf.lines.len() {
-                    let next_line = buf.lines.remove(buf.cursor_y + 1);
-                    let line_num = buf.cursor_y;
-                    let col = buf.lines[buf.cursor_y].len();
-                    buf.lines[buf.cursor_y].push_str(&next_line);
-                    buf.modified = true;
+
                     Some(EditorAction::JoinLines {
-                        line: line_num,
-                        col,
+                        line: cursor_y,
+                        col: join_col_char,
                         deleted_content: next_line,
                     })
                 } else {
                     None
                 }
-            } else {
-                None
             }
         };
+
         if let Some(act) = action {
             self.undo_stack.push(act);
         }
@@ -481,24 +594,40 @@ impl EditorState {
 
     pub fn move_cursor_left(&mut self) {
         let buf = self.buf_mut();
+        if buf.cursor_y >= buf.lines.len() {
+            buf.cursor_y = 0;
+            buf.cursor_x = 0;
+            return;
+        }
+
+        let line = &buf.lines[buf.cursor_y];
+        buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
+
         if buf.cursor_x > 0 {
-            buf.cursor_x -= 1;
+            buf.cursor_x = Self::prev_char_boundary(line, buf.cursor_x);
         } else if buf.cursor_y > 0 {
             buf.cursor_y -= 1;
             buf.cursor_x = buf.lines[buf.cursor_y].len();
+            Self::set_cursor_x_char_boundary(buf);
         }
     }
 
     pub fn move_cursor_right(&mut self) {
         let buf = self.buf_mut();
-        if buf.cursor_y < buf.lines.len() {
-            let line_len = buf.lines[buf.cursor_y].len();
-            if buf.cursor_x < line_len {
-                buf.cursor_x += 1;
-            } else if buf.cursor_y + 1 < buf.lines.len() {
-                buf.cursor_y += 1;
-                buf.cursor_x = 0;
-            }
+        if buf.cursor_y >= buf.lines.len() {
+            buf.cursor_y = 0;
+            buf.cursor_x = 0;
+            return;
+        }
+
+        let line = &buf.lines[buf.cursor_y];
+        buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
+
+        if buf.cursor_x < line.len() {
+            buf.cursor_x = Self::next_char_boundary(line, buf.cursor_x);
+        } else if buf.cursor_y + 1 < buf.lines.len() {
+            buf.cursor_y += 1;
+            buf.cursor_x = 0;
         }
     }
 
@@ -553,12 +682,14 @@ impl EditorState {
     }
 
     fn clamp_cursor_x_internal(buf: &mut Buffer) {
-        if buf.cursor_y < buf.lines.len() {
-            let line_len = buf.lines[buf.cursor_y].len();
-            if buf.cursor_x > line_len {
-                buf.cursor_x = line_len;
-            }
+        if buf.cursor_y >= buf.lines.len() {
+            buf.cursor_x = 0;
+            return;
         }
+
+        let line = &buf.lines[buf.cursor_y];
+        buf.cursor_x = buf.cursor_x.min(line.len());
+        buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
     }
 
     pub fn ensure_cursor_visible(&mut self, visible_height: usize) {
@@ -708,19 +839,26 @@ impl EditorState {
         match action {
             EditorAction::InsertChar { line, col, .. } => {
                 // Undo insert = delete
-                if *line < buf.lines.len() && *col < buf.lines[*line].len() {
-                    buf.lines[*line].remove(*col);
-                    buf.cursor_y = *line;
-                    buf.cursor_x = *col;
-                    buf.modified = true;
+                if *line < buf.lines.len() {
+                    let ln = &mut buf.lines[*line];
+                    let col_b = Self::byte_index_of_char(ln, *col);
+                    if col_b < ln.len() {
+                        let end = Self::next_char_boundary(ln, col_b);
+                        ln.drain(col_b..end);
+                        buf.cursor_y = *line;
+                        buf.cursor_x = col_b;
+                        buf.modified = true;
+                    }
                 }
             }
             EditorAction::DeleteChar { line, col, ch } => {
                 // Undo delete = insert
                 if *line < buf.lines.len() {
-                    buf.lines[*line].insert(*col, *ch);
+                    let ln = &mut buf.lines[*line];
+                    let col_b = Self::byte_index_of_char(ln, *col);
+                    ln.insert(col_b, *ch);
                     buf.cursor_y = *line;
-                    buf.cursor_x = col + 1;
+                    buf.cursor_x = (col_b + ch.len_utf8()).min(ln.len());
                     buf.modified = true;
                 }
             }
@@ -745,7 +883,8 @@ impl EditorState {
                 if *line_num < buf.lines.len() {
                     buf.lines[*line_num] = old.clone();
                     buf.cursor_y = *line_num;
-                    buf.cursor_x = old.len().min(buf.cursor_x);
+                    buf.cursor_x = buf.cursor_x.min(buf.lines[*line_num].len());
+                    Self::set_cursor_x_char_boundary(buf);
                     buf.modified = true;
                 }
             }
@@ -753,12 +892,15 @@ impl EditorState {
                 // Undo split = join lines
                 if *line + 1 < buf.lines.len() {
                     let next_line = buf.lines.remove(*line + 1);
-                    // Remove auto-indent from joined content
                     let trimmed = next_line.trim_start();
-                    buf.lines[*line].truncate(*col);
-                    buf.lines[*line].push_str(trimmed);
+
+                    let ln = &mut buf.lines[*line];
+                    let col_b = Self::byte_index_of_char(ln, *col);
+                    ln.truncate(col_b);
+                    ln.push_str(trimmed);
+
                     buf.cursor_y = *line;
-                    buf.cursor_x = *col;
+                    buf.cursor_x = col_b.min(ln.len());
                     buf.modified = true;
                 }
             }
@@ -769,16 +911,15 @@ impl EditorState {
             } => {
                 // Undo join = split back
                 if *line < buf.lines.len() {
-                    let remaining = buf.lines[*line][*col..].to_string();
-                    buf.lines[*line].truncate(*col);
-                    buf.lines.insert(*line + 1, deleted_content.clone());
-                    // The remaining was appended to deleted_content, but we stored original
-                    // Actually for join, the deleted_content was the line that got joined
+                    let ln = &mut buf.lines[*line];
+                    let col_b = Self::byte_index_of_char(ln, *col);
+                    let tail = ln.get(col_b..).unwrap_or("").to_string();
+                    ln.truncate(col_b);
+
+                    buf.lines.insert(*line + 1, deleted_content.clone() + &tail);
                     buf.cursor_y = *line + 1;
                     buf.cursor_x = 0;
                     buf.modified = true;
-                    // Fix: remaining was part of the operation
-                    let _ = remaining; // Already handled
                 }
             }
             EditorAction::Batch(actions) => {
@@ -794,18 +935,25 @@ impl EditorState {
         match action {
             EditorAction::InsertChar { line, col, ch } => {
                 if *line < buf.lines.len() {
-                    buf.lines[*line].insert(*col, *ch);
+                    let ln = &mut buf.lines[*line];
+                    let col_b = Self::byte_index_of_char(ln, *col);
+                    ln.insert(col_b, *ch);
                     buf.cursor_y = *line;
-                    buf.cursor_x = col + 1;
+                    buf.cursor_x = (col_b + ch.len_utf8()).min(ln.len());
                     buf.modified = true;
                 }
             }
             EditorAction::DeleteChar { line, col, .. } => {
-                if *line < buf.lines.len() && *col < buf.lines[*line].len() {
-                    buf.lines[*line].remove(*col);
-                    buf.cursor_y = *line;
-                    buf.cursor_x = *col;
-                    buf.modified = true;
+                if *line < buf.lines.len() {
+                    let ln = &mut buf.lines[*line];
+                    let col_b = Self::byte_index_of_char(ln, *col);
+                    if col_b < ln.len() {
+                        let end = Self::next_char_boundary(ln, col_b);
+                        ln.drain(col_b..end);
+                        buf.cursor_y = *line;
+                        buf.cursor_x = col_b;
+                        buf.modified = true;
+                    }
                 }
             }
             EditorAction::InsertLine { line_num, content } => {
@@ -826,14 +974,17 @@ impl EditorState {
                 if *line_num < buf.lines.len() {
                     buf.lines[*line_num] = new.clone();
                     buf.cursor_y = *line_num;
-                    buf.cursor_x = new.len().min(buf.cursor_x);
+                    buf.cursor_x = buf.cursor_x.min(buf.lines[*line_num].len());
+                    Self::set_cursor_x_char_boundary(buf);
                     buf.modified = true;
                 }
             }
             EditorAction::SplitLine { line, col } => {
                 if *line < buf.lines.len() {
-                    let remainder = buf.lines[*line][*col..].to_string();
-                    buf.lines[*line].truncate(*col);
+                    let ln = &mut buf.lines[*line];
+                    let col_b = Self::byte_index_of_char(ln, *col);
+                    let remainder = ln.get(col_b..).unwrap_or("").to_string();
+                    ln.truncate(col_b);
                     buf.lines.insert(*line + 1, remainder);
                     buf.cursor_y = *line + 1;
                     buf.cursor_x = 0;
@@ -845,7 +996,10 @@ impl EditorState {
                     let next = buf.lines.remove(*line + 1);
                     buf.lines[*line].push_str(&next);
                     buf.cursor_y = *line;
-                    buf.cursor_x = *col;
+
+                    let ln = &buf.lines[*line];
+                    let col_b = Self::byte_index_of_char(ln, *col);
+                    buf.cursor_x = col_b.min(ln.len());
                     buf.modified = true;
                 }
             }
@@ -1023,21 +1177,26 @@ impl EditorState {
         let buf = self.buf();
 
         if start_line == end_line {
-            // Single line selection
             let line = buf.lines.get(start_line)?;
-            let end = end_col.min(line.len());
-            let start = start_col.min(end);
+            let start = Self::clamp_to_char_boundary(line, start_col.min(line.len()));
+            let end = Self::clamp_to_char_boundary(line, end_col.min(line.len()));
+            let (start, end) = if start <= end {
+                (start, end)
+            } else {
+                (end, start)
+            };
             Some(line[start..end].to_string())
         } else {
-            // Multi-line selection
             let mut result = String::new();
             for i in start_line..=end_line {
                 if let Some(line) = buf.lines.get(i) {
                     if i == start_line {
-                        result.push_str(&line[start_col.min(line.len())..]);
+                        let start = Self::clamp_to_char_boundary(line, start_col.min(line.len()));
+                        result.push_str(&line[start..]);
                         result.push('\n');
                     } else if i == end_line {
-                        result.push_str(&line[..end_col.min(line.len())]);
+                        let end = Self::clamp_to_char_boundary(line, end_col.min(line.len()));
+                        result.push_str(&line[..end]);
                     } else {
                         result.push_str(line);
                         result.push('\n');
@@ -1076,38 +1235,43 @@ impl EditorState {
         let buf = self.buf_mut();
 
         if start_line == end_line {
-            // Single line deletion
             if let Some(line) = buf.lines.get_mut(start_line) {
-                let end = end_col.min(line.len());
-                let start = start_col.min(end);
+                let start = Self::clamp_to_char_boundary(line, start_col.min(line.len()));
+                let end = Self::clamp_to_char_boundary(line, end_col.min(line.len()));
+                let (start, end) = if start <= end {
+                    (start, end)
+                } else {
+                    (end, start)
+                };
                 line.drain(start..end);
                 buf.cursor_x = start;
                 buf.cursor_y = start_line;
             }
         } else {
-            // Multi-line deletion
-            // Get the part before selection on first line
             let prefix = buf
                 .lines
                 .get(start_line)
-                .map(|l| l[..start_col.min(l.len())].to_string())
+                .map(|l| {
+                    let end = Self::clamp_to_char_boundary(l, start_col.min(l.len()));
+                    l[..end].to_string()
+                })
                 .unwrap_or_default();
 
-            // Get the part after selection on last line
             let suffix = buf
                 .lines
                 .get(end_line)
-                .map(|l| l[end_col.min(l.len())..].to_string())
+                .map(|l| {
+                    let start = Self::clamp_to_char_boundary(l, end_col.min(l.len()));
+                    l[start..].to_string()
+                })
                 .unwrap_or_default();
 
-            // Remove lines from end to start+1
             for _ in (start_line + 1..=end_line).rev() {
                 if start_line + 1 < buf.lines.len() {
                     buf.lines.remove(start_line + 1);
                 }
             }
 
-            // Combine prefix and suffix on start line
             if start_line < buf.lines.len() {
                 buf.lines[start_line] = prefix.clone() + &suffix;
             }
@@ -1132,32 +1296,43 @@ impl EditorState {
         }
 
         let line = &buf.lines[buf.cursor_y];
-        let chars: Vec<char> = line.chars().collect();
-        let mut x = buf.cursor_x;
+        buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
+
+        let mut idx = buf.cursor_x;
 
         // Skip current word (non-whitespace)
-        while x < chars.len() && !chars[x].is_whitespace() {
-            x += 1;
-        }
-        // Skip whitespace
-        while x < chars.len() && chars[x].is_whitespace() {
-            x += 1;
+        while idx < line.len() {
+            let ch = line[idx..].chars().next().unwrap();
+            if ch.is_whitespace() {
+                break;
+            }
+            idx = Self::next_char_boundary(line, idx);
         }
 
-        if x >= chars.len() && buf.cursor_y + 1 < buf.lines.len() {
+        // Skip whitespace
+        while idx < line.len() {
+            let ch = line[idx..].chars().next().unwrap();
+            if !ch.is_whitespace() {
+                break;
+            }
+            idx = Self::next_char_boundary(line, idx);
+        }
+
+        if idx >= line.len() && buf.cursor_y + 1 < buf.lines.len() {
             // Move to next line
             buf.cursor_y += 1;
-            buf.cursor_x = 0;
-            // Skip leading whitespace on new line
-            let new_line = &buf.lines[buf.cursor_y];
-            let new_chars: Vec<char> = new_line.chars().collect();
-            let mut new_x = 0;
-            while new_x < new_chars.len() && new_chars[new_x].is_whitespace() {
-                new_x += 1;
+            let next_line = &buf.lines[buf.cursor_y];
+            let mut next_idx = 0;
+            while next_idx < next_line.len() {
+                let ch = next_line[next_idx..].chars().next().unwrap();
+                if !ch.is_whitespace() {
+                    break;
+                }
+                next_idx = Self::next_char_boundary(next_line, next_idx);
             }
-            buf.cursor_x = new_x;
+            buf.cursor_x = next_idx;
         } else {
-            buf.cursor_x = x.min(chars.len().saturating_sub(1).max(0));
+            buf.cursor_x = idx;
         }
     }
 
@@ -1167,29 +1342,43 @@ impl EditorState {
             return;
         }
 
+        let line = &buf.lines[buf.cursor_y];
+        buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
+
         if buf.cursor_x == 0 {
-            // Move to end of previous line
             if buf.cursor_y > 0 {
                 buf.cursor_y -= 1;
                 buf.cursor_x = buf.lines[buf.cursor_y].len();
+                Self::set_cursor_x_char_boundary(buf);
             }
             return;
         }
 
-        let line = &buf.lines[buf.cursor_y];
-        let chars: Vec<char> = line.chars().collect();
-        let mut x = buf.cursor_x.saturating_sub(1);
+        let mut idx = Self::prev_char_boundary(line, buf.cursor_x);
 
         // Skip whitespace backwards
-        while x > 0 && chars[x].is_whitespace() {
-            x -= 1;
-        }
-        // Skip word backwards
-        while x > 0 && !chars[x - 1].is_whitespace() {
-            x -= 1;
+        loop {
+            let ch = line[idx..].chars().next().unwrap();
+            if !ch.is_whitespace() || idx == 0 {
+                break;
+            }
+            idx = Self::prev_char_boundary(line, idx);
         }
 
-        buf.cursor_x = x;
+        // Skip word backwards
+        loop {
+            if idx == 0 {
+                break;
+            }
+            let prev = Self::prev_char_boundary(line, idx);
+            let ch = line[prev..idx].chars().next().unwrap();
+            if ch.is_whitespace() {
+                break;
+            }
+            idx = prev;
+        }
+
+        buf.cursor_x = idx;
     }
 
     pub fn move_word_end(&mut self) {
@@ -1199,43 +1388,71 @@ impl EditorState {
         }
 
         let line = &buf.lines[buf.cursor_y];
-        let chars: Vec<char> = line.chars().collect();
-        let mut x = buf.cursor_x;
+        buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
 
-        // Move at least one character
-        if x < chars.len() {
-            x += 1;
+        if line.is_empty() {
+            if buf.cursor_y + 1 < buf.lines.len() {
+                buf.cursor_y += 1;
+                buf.cursor_x = 0;
+            }
+            return;
         }
 
-        // Skip whitespace
-        while x < chars.len() && chars[x].is_whitespace() {
-            x += 1;
-        }
-        // Move to end of word
-        while x < chars.len() && !chars[x].is_whitespace() {
-            x += 1;
+        let mut idx = buf.cursor_x;
+
+        // Move at least one character.
+        if idx < line.len() {
+            idx = Self::next_char_boundary(line, idx);
         }
 
-        if x > 0 {
-            x -= 1;
+        // Skip whitespace.
+        while idx < line.len() {
+            let ch = line[idx..].chars().next().unwrap();
+            if !ch.is_whitespace() {
+                break;
+            }
+            idx = Self::next_char_boundary(line, idx);
         }
 
-        if x >= chars.len() && buf.cursor_y + 1 < buf.lines.len() {
-            // Move to next line
+        // Move to end of word (last non-whitespace).
+        let mut last = None;
+        while idx < line.len() {
+            let ch = line[idx..].chars().next().unwrap();
+            if ch.is_whitespace() {
+                break;
+            }
+            last = Some(idx);
+            idx = Self::next_char_boundary(line, idx);
+        }
+
+        if let Some(last_idx) = last {
+            buf.cursor_x = last_idx;
+            return;
+        }
+
+        // If no word found on this line, move to next line start.
+        if buf.cursor_y + 1 < buf.lines.len() {
             buf.cursor_y += 1;
             buf.cursor_x = 0;
-        } else {
-            buf.cursor_x = x;
         }
     }
 
     pub fn move_to_first_non_blank(&mut self) {
         let buf = self.buf_mut();
-        if buf.cursor_y < buf.lines.len() {
-            let line = &buf.lines[buf.cursor_y];
-            let pos = line.chars().take_while(|c| c.is_whitespace()).count();
-            buf.cursor_x = pos;
+        if buf.cursor_y >= buf.lines.len() {
+            return;
         }
+
+        let line = &buf.lines[buf.cursor_y];
+        let mut idx = 0;
+        while idx < line.len() {
+            let ch = line[idx..].chars().next().unwrap();
+            if !ch.is_whitespace() {
+                break;
+            }
+            idx = Self::next_char_boundary(line, idx);
+        }
+        buf.cursor_x = idx;
     }
 
     pub fn find_matching_bracket(&mut self) -> bool {
@@ -1245,13 +1462,12 @@ impl EditorState {
         }
 
         let line = &buf.lines[buf.cursor_y];
-        let chars: Vec<char> = line.chars().collect();
-
-        if buf.cursor_x >= chars.len() {
+        buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
+        if buf.cursor_x >= line.len() {
             return false;
         }
 
-        let current = chars[buf.cursor_x];
+        let current = line[buf.cursor_x..].chars().next().unwrap();
         let (target, forward) = match current {
             '(' => (')', true),
             ')' => ('(', false),
@@ -1264,18 +1480,20 @@ impl EditorState {
             _ => return false,
         };
 
-        let mut depth = 1;
+        let mut depth = 1i32;
         let mut y = buf.cursor_y;
         let mut x = buf.cursor_x;
 
         if forward {
-            x += 1;
+            x = Self::next_char_boundary(&buf.lines[y], x);
             while y < buf.lines.len() {
-                let search_line: Vec<char> = buf.lines[y].chars().collect();
+                let search_line = &buf.lines[y];
+                x = Self::clamp_to_char_boundary(search_line, x);
                 while x < search_line.len() {
-                    if search_line[x] == current {
+                    let ch = search_line[x..].chars().next().unwrap();
+                    if ch == current {
                         depth += 1;
-                    } else if search_line[x] == target {
+                    } else if ch == target {
                         depth -= 1;
                         if depth == 0 {
                             buf.cursor_y = y;
@@ -1283,7 +1501,7 @@ impl EditorState {
                             return true;
                         }
                     }
-                    x += 1;
+                    x = Self::next_char_boundary(search_line, x);
                 }
                 y += 1;
                 x = 0;
@@ -1295,40 +1513,45 @@ impl EditorState {
                 }
                 y -= 1;
                 x = buf.lines[y].len();
-            } else {
-                x -= 1;
             }
 
-            loop {
-                let search_line: Vec<char> = buf.lines[y].chars().collect();
-                while x < search_line.len() {
-                    let check_x = if forward {
-                        x
-                    } else {
-                        search_line.len() - 1 - x
-                    };
-                    if check_x < search_line.len() {
-                        if search_line[x] == current {
-                            depth += 1;
-                        } else if search_line[x] == target {
-                            depth -= 1;
-                            if depth == 0 {
-                                buf.cursor_y = y;
-                                buf.cursor_x = x;
-                                return true;
-                            }
+            while y < buf.lines.len() {
+                let search_line = &buf.lines[y];
+                x = Self::clamp_to_char_boundary(search_line, x);
+                if x == 0 {
+                    if y == 0 {
+                        break;
+                    }
+                    y -= 1;
+                    x = buf.lines[y].len();
+                    continue;
+                }
+
+                x = Self::prev_char_boundary(search_line, x);
+                loop {
+                    let ch = search_line[x..].chars().next().unwrap();
+                    if ch == current {
+                        depth += 1;
+                    } else if ch == target {
+                        depth -= 1;
+                        if depth == 0 {
+                            buf.cursor_y = y;
+                            buf.cursor_x = x;
+                            return true;
                         }
                     }
+
                     if x == 0 {
                         break;
                     }
-                    x -= 1;
+                    x = Self::prev_char_boundary(search_line, x);
                 }
+
                 if y == 0 {
                     break;
                 }
                 y -= 1;
-                x = buf.lines[y].len().saturating_sub(1);
+                x = buf.lines[y].len();
             }
         }
 
@@ -1342,13 +1565,16 @@ impl EditorState {
         }
 
         let line = &buf.lines[buf.cursor_y];
-        let chars: Vec<char> = line.chars().collect();
+        buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
 
-        for x in (buf.cursor_x + 1)..chars.len() {
-            if chars[x] == target {
-                buf.cursor_x = x;
+        let mut idx = Self::next_char_boundary(line, buf.cursor_x);
+        while idx < line.len() {
+            let ch = line[idx..].chars().next().unwrap();
+            if ch == target {
+                buf.cursor_x = idx;
                 return true;
             }
+            idx = Self::next_char_boundary(line, idx);
         }
         false
     }
@@ -1360,11 +1586,14 @@ impl EditorState {
         }
 
         let line = &buf.lines[buf.cursor_y];
-        let chars: Vec<char> = line.chars().collect();
+        buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
 
-        for x in (0..buf.cursor_x).rev() {
-            if chars[x] == target {
-                buf.cursor_x = x;
+        let mut idx = buf.cursor_x;
+        while idx > 0 {
+            idx = Self::prev_char_boundary(line, idx);
+            let ch = line[idx..].chars().next().unwrap();
+            if ch == target {
+                buf.cursor_x = idx;
                 return true;
             }
         }
@@ -1378,13 +1607,16 @@ impl EditorState {
         }
 
         let line = &buf.lines[buf.cursor_y];
-        let chars: Vec<char> = line.chars().collect();
+        buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
 
-        for x in (buf.cursor_x + 1)..chars.len() {
-            if chars[x] == target {
-                buf.cursor_x = x.saturating_sub(1);
+        let mut idx = Self::next_char_boundary(line, buf.cursor_x);
+        while idx < line.len() {
+            let ch = line[idx..].chars().next().unwrap();
+            if ch == target {
+                buf.cursor_x = Self::prev_char_boundary(line, idx);
                 return true;
             }
+            idx = Self::next_char_boundary(line, idx);
         }
         false
     }
@@ -1396,11 +1628,14 @@ impl EditorState {
         }
 
         let line = &buf.lines[buf.cursor_y];
-        let chars: Vec<char> = line.chars().collect();
+        buf.cursor_x = Self::clamp_to_char_boundary(line, buf.cursor_x);
 
-        for x in (0..buf.cursor_x).rev() {
-            if chars[x] == target {
-                buf.cursor_x = x + 1;
+        let mut idx = buf.cursor_x;
+        while idx > 0 {
+            idx = Self::prev_char_boundary(line, idx);
+            let ch = line[idx..].chars().next().unwrap();
+            if ch == target {
+                buf.cursor_x = Self::next_char_boundary(line, idx);
                 return true;
             }
         }
@@ -1712,7 +1947,7 @@ pub fn render(
     // Build a map of line numbers to diagnostics for the current file
     let diag_map: std::collections::HashMap<usize, &Diagnostic> = diagnostics
         .iter()
-        .filter(|d| current_file.map_or(false, |f| &d.file == f))
+        .filter(|d| current_file == Some(&d.file))
         .map(|d| (d.line, d))
         .collect();
 
@@ -1899,5 +2134,69 @@ pub fn render(
                 inner.y + cursor_screen_y as u16,
             ));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EditorState;
+
+    #[test]
+    fn utf8_insert_and_backspace_are_safe() {
+        let mut ed = EditorState::new(4);
+
+        ed.insert_char('é');
+        assert_eq!(ed.buffers[0].lines[0], "é");
+        assert_eq!(ed.buffers[0].cursor_x, "é".len());
+
+        ed.move_cursor_left();
+        assert_eq!(ed.buffers[0].cursor_x, 0);
+        ed.delete_char();
+        assert_eq!(ed.buffers[0].lines[0], "");
+
+        ed.insert_char('😀');
+        assert_eq!(ed.buffers[0].lines[0], "😀");
+        assert_eq!(ed.buffers[0].cursor_x, "😀".len());
+        ed.backspace();
+        assert_eq!(ed.buffers[0].lines[0], "");
+        assert_eq!(ed.buffers[0].cursor_x, 0);
+    }
+
+    #[test]
+    fn utf8_newline_split_uses_char_boundaries() {
+        let mut ed = EditorState::new(4);
+        ed.buffers[0].lines[0] = "a😀b".to_string();
+
+        ed.buffers[0].cursor_y = 0;
+        ed.buffers[0].cursor_x = "a😀".len();
+        ed.insert_newline_with_indent(false);
+
+        assert_eq!(ed.buffers[0].lines.len(), 2);
+        assert_eq!(ed.buffers[0].lines[0], "a😀");
+        assert_eq!(ed.buffers[0].lines[1], "b");
+        assert_eq!(ed.buffers[0].cursor_y, 1);
+        assert_eq!(ed.buffers[0].cursor_x, 0);
+    }
+
+    #[test]
+    fn utf8_cursor_moves_by_char_not_byte() {
+        let mut ed = EditorState::new(4);
+        ed.buffers[0].lines[0] = "é😀x".to_string();
+        ed.buffers[0].cursor_y = 0;
+        ed.buffers[0].cursor_x = 0;
+
+        ed.move_cursor_right();
+        assert_eq!(ed.buffers[0].cursor_x, "é".len());
+        ed.move_cursor_right();
+        assert_eq!(ed.buffers[0].cursor_x, "é😀".len());
+        ed.move_cursor_right();
+        assert_eq!(ed.buffers[0].cursor_x, "é😀x".len());
+
+        ed.move_cursor_left();
+        assert_eq!(ed.buffers[0].cursor_x, "é😀".len());
+        ed.move_cursor_left();
+        assert_eq!(ed.buffers[0].cursor_x, "é".len());
+        ed.move_cursor_left();
+        assert_eq!(ed.buffers[0].cursor_x, 0);
     }
 }
