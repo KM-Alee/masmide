@@ -62,12 +62,13 @@ impl OutputState {
             if line.trim().is_empty() {
                 continue;
             }
-            let output_type = if line.to_lowercase().contains("error") {
+            let lower = line.to_lowercase();
+            let output_type = if lower.contains("error") {
                 OutputType::Error
-            } else if line.to_lowercase().contains("warning") {
+            } else if lower.contains("warning") {
                 OutputType::Stderr
             } else {
-                OutputType::Stderr
+                OutputType::Info
             };
             self.lines.push(OutputLine {
                 text: line.to_string(),
@@ -176,14 +177,20 @@ impl OutputState {
     }
 }
 
-pub fn render(frame: &mut Frame, area: Rect, state: &mut OutputState, focused: bool, theme: &Theme) {
+pub fn render(
+    frame: &mut Frame,
+    area: Rect,
+    state: &mut OutputState,
+    focused: bool,
+    theme: &Theme,
+) {
     let border_style = if focused {
         Style::default().fg(theme.ui.border_focused.to_color())
     } else {
         Style::default().fg(theme.ui.border.to_color())
     };
 
-    let title = if focused { " Output " } else { " Output " };
+    let title = " Output ";
     let title_style = if focused {
         Style::default()
             .fg(theme.ui.title_focused.to_color())

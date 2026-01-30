@@ -29,7 +29,7 @@ pub fn render(
         .max()
         .unwrap_or(20) as u16;
 
-    let popup_width = max_text_width.max(15).min(40);
+    let popup_width = max_text_width.clamp(15, 40);
     let popup_height = (visible.len() as u16 + 2).min(12); // +2 for borders
 
     // Position popup below cursor, or above if not enough space

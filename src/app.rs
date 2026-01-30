@@ -403,7 +403,7 @@ impl App {
 
     pub fn execute_command(&mut self) -> Result<crate::input::CommandResult> {
         use crate::input::CommandResult;
-        
+
         let cmd = self.command_input.trim().to_string();
         self.command_input.clear();
 
@@ -717,7 +717,8 @@ impl App {
         self.output_only_mode = !self.output_only_mode;
         if self.output_only_mode {
             self.focus = FocusedPanel::Output;
-            self.status_message = String::from("Output view (F8 or Esc to exit, F9 to save screenshot)");
+            self.status_message =
+                String::from("Output view (F8 or Esc to exit, F9 to save screenshot)");
         } else {
             self.focus = FocusedPanel::Editor;
             self.mode = Mode::Normal;
@@ -761,7 +762,7 @@ impl App {
                     content.push_str(&format!("  {}\n", line.text));
                 }
                 crate::ui::output::OutputType::Divider => {
-                    content.push_str("\n");
+                    content.push('\n');
                 }
             }
         }
@@ -813,7 +814,11 @@ impl App {
         self.autosave_enabled = !self.autosave_enabled;
         self.status_message = format!(
             "Autosave {}",
-            if self.autosave_enabled { "enabled" } else { "disabled" }
+            if self.autosave_enabled {
+                "enabled"
+            } else {
+                "disabled"
+            }
         );
     }
 

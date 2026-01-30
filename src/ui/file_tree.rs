@@ -5,7 +5,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState},
 };
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::theme::Theme;
 
@@ -26,11 +26,11 @@ pub struct FileTreeState {
 }
 
 impl FileTreeState {
-    pub fn new(root: &PathBuf) -> Result<Self> {
+    pub fn new(root: &Path) -> Result<Self> {
         let mut state = Self {
             entries: Vec::new(),
             list_state: ListState::default(),
-            root: root.clone(),
+            root: root.to_path_buf(),
         };
         state.refresh()?;
         if !state.entries.is_empty() {
@@ -87,7 +87,9 @@ impl FileTreeState {
             return Err(anyhow::anyhow!("Filename cannot be empty"));
         }
         if name.contains("..") || name.contains('/') || name.contains('\\') {
-            return Err(anyhow::anyhow!("Invalid filename: contains path separators or '..'"));
+            return Err(anyhow::anyhow!(
+                "Invalid filename: contains path separators or '..'"
+            ));
         }
         if name.starts_with('.') && name.len() == 1 {
             return Err(anyhow::anyhow!("Invalid filename"));
@@ -101,24 +103,27 @@ impl FileTreeState {
     }
 
     /// Verify a path is within the project root
-    fn verify_path_in_project(&self, path: &PathBuf) -> Result<()> {
+    fn verify_path_in_project(&self, path: &Path) -> Result<()> {
         // Canonicalize both paths to resolve symlinks and '..'
-        let canonical_root = self.root.canonicalize()
+        let canonical_root = self
+            .root
+            .canonicalize()
             .unwrap_or_else(|_| self.root.clone());
-        
+
         // For new files, check the parent directory
         let check_path = if path.exists() {
-            path.canonicalize().unwrap_or_else(|_| path.clone())
+            path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
         } else if let Some(parent) = path.parent() {
             if parent.exists() {
-                parent.canonicalize()
+                parent
+                    .canonicalize()
                     .unwrap_or_else(|_| parent.to_path_buf())
                     .join(path.file_name().unwrap_or_default())
             } else {
-                path.clone()
+                path.to_path_buf()
             }
         } else {
-            path.clone()
+            path.to_path_buf()
         };
 
         if !check_path.starts_with(&canonical_root) {
@@ -129,7 +134,7 @@ impl FileTreeState {
 
     pub fn create_file(&mut self, name: &str) -> Result<()> {
         Self::validate_filename(name)?;
-        
+
         let base_path = self.get_base_path_for_creation();
         let new_path = base_path.join(name);
 
@@ -146,7 +151,7 @@ impl FileTreeState {
 
     pub fn create_dir(&mut self, name: &str) -> Result<()> {
         Self::validate_filename(name)?;
-        
+
         let base_path = self.get_base_path_for_creation();
         let new_path = base_path.join(name);
 
@@ -164,7 +169,7 @@ impl FileTreeState {
     pub fn delete_current(&mut self) -> Result<()> {
         if let Some(path) = self.selected_path() {
             self.verify_path_in_project(&path)?;
-            
+
             if path.is_dir() {
                 fs::remove_dir_all(&path)?;
             } else {
@@ -177,10 +182,10 @@ impl FileTreeState {
 
     pub fn rename_current(&mut self, new_name: &str) -> Result<()> {
         Self::validate_filename(new_name)?;
-        
+
         if let Some(path) = self.selected_path() {
             self.verify_path_in_project(&path)?;
-            
+
             let parent = path.parent().unwrap_or(&self.root);
             let new_path = parent.join(new_name);
 
@@ -361,21 +366,7 @@ pub fn render(
         .iter()
         .map(|entry| {
             let indent = "  ".repeat(entry.depth);
-            let icon = if entry.is_dir {
-                if entry.expanded {
-                    " "
-                } else {
-                    " "
-                }
-            } else if entry.name.ends_with(".asm") {
-                " "
-            } else if entry.name.ends_with(".inc") {
-                " "
-            } else if entry.name.ends_with(".exe") {
-                " "
-            } else {
-                " "
-            };
+            let icon = " ";
             let style = if entry.is_dir {
                 Style::default().fg(theme.ui.file_tree_dir.to_color())
             } else if entry.name.ends_with(".asm") {

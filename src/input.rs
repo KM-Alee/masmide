@@ -790,17 +790,15 @@ fn handle_command_mode(app: &mut App, key: KeyEvent) -> Result<Option<Action>> {
             app.mode = Mode::Normal;
             app.command_input.clear();
         }
-        KeyCode::Enter => {
-            match app.execute_command() {
-                Ok(CommandResult::Quit) => {
-                    return Ok(Some(Action::Quit));
-                }
-                Ok(CommandResult::Continue) => {}
-                Err(e) => {
-                    app.status_message = format!("Error: {}", e);
-                }
+        KeyCode::Enter => match app.execute_command() {
+            Ok(CommandResult::Quit) => {
+                return Ok(Some(Action::Quit));
             }
-        }
+            Ok(CommandResult::Continue) => {}
+            Err(e) => {
+                app.status_message = format!("Error: {}", e);
+            }
+        },
         KeyCode::Char(c) => {
             app.command_input.push(c);
         }

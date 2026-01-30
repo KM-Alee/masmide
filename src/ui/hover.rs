@@ -73,7 +73,7 @@ pub fn render(frame: &mut Frame, doc: &DocEntry, cursor_screen_pos: (u16, u16), 
     // Calculate popup dimensions
     let content_width = lines.iter().map(|l| l.width()).max().unwrap_or(20) as u16;
 
-    let popup_width = (content_width + 4).min(60).max(30); // +4 for borders and padding
+    let popup_width = (content_width + 4).clamp(30, 60); // +4 for borders and padding
     let popup_height = (lines.len() as u16 + 2).min(20); // +2 for borders
 
     // Position popup - try above cursor first, then below
@@ -85,7 +85,7 @@ pub fn render(frame: &mut Frame, doc: &DocEntry, cursor_screen_pos: (u16, u16), 
         area.width.saturating_sub(popup_width)
     };
 
-    let popup_y = if cursor_y >= popup_height + 1 {
+    let popup_y = if cursor_y > popup_height {
         cursor_y - popup_height - 1 // Above cursor
     } else if cursor_y + popup_height + 2 < area.height {
         cursor_y + 1 // Below cursor

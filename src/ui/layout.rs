@@ -10,7 +10,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         render_output_only(frame, app, size, &theme);
         return;
     }
-    
+
     // For normal rendering, we can use a reference since we handle borrows carefully
     let theme = app.config.theme.clone();
 
@@ -133,7 +133,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     // Render search bar if in search mode
     if app.mode == Mode::Search {
-        super::search_bar::render(frame, main_chunks[2], &app.search_input, &app.editor, &theme);
+        super::search_bar::render(
+            frame,
+            main_chunks[2],
+            &app.search_input,
+            &app.editor,
+            &theme,
+        );
     }
 
     // Render help popup if visible
@@ -202,16 +208,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
 /// Render fullscreen output-only view (for screenshots)
 fn render_output_only(frame: &mut Frame, app: &mut App, size: Rect, theme: &crate::theme::Theme) {
-    use ratatui::widgets::Paragraph;
     use ratatui::text::{Line, Span};
+    use ratatui::widgets::Paragraph;
 
     // Layout: output panel + status bar
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(3),
-            Constraint::Length(1),
-        ])
+        .constraints([Constraint::Min(3), Constraint::Length(1)])
         .split(size);
 
     let output_area = chunks[0];
