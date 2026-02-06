@@ -685,8 +685,18 @@ fn handle_insert_mode(app: &mut App, key: KeyEvent) -> Result<Option<Action>> {
                 return Ok(Some(Action::None));
             }
             KeyCode::Char('v') => {
-                app.editor.paste_after();
-                app.status_message = String::from("Pasted");
+                // Paste from system clipboard in insert mode
+                if let Some((text, _yank_type)) = app.editor.clipboard.paste() {
+                    let buf = &mut app.editor.buffers[app.editor.active_buffer];
+                    crate::ui::editor::clipboard::paste_text_inline(
+                        buf,
+                        &mut app.editor.undo_stack,
+                        &text,
+                    );
+                    app.status_message = String::from("Pasted from clipboard");
+                } else {
+                    app.status_message = String::from("Clipboard empty");
+                }
                 return Ok(Some(Action::None));
             }
             KeyCode::Char('x') => {
@@ -725,14 +735,18 @@ fn handle_insert_mode(app: &mut App, key: KeyEvent) -> Result<Option<Action>> {
             // Auto-trigger autocomplete after 2+ characters
             if c.is_alphanumeric() || c == '_' || c == '.' {
                 let buf = &app.editor.buffers[app.editor.active_buffer];
-                let col = buf.cursor_x;
-                if col >= 2 {
+                let cursor_byte = buf.cursor_x;
+                if cursor_byte >= 2 {
                     let line = &buf.lines[buf.cursor_y];
                     let chars: Vec<char> = line.chars().collect();
+                    
+                    // Convert byte position to character index
+                    let char_pos = line[..cursor_byte.min(line.len())].chars().count();
+                    
                     // Check if we have at least 2 identifier chars
                     let mut word_len = 0;
-                    let mut i = col;
-                    while i > 0 {
+                    let mut i = char_pos;
+                    while i > 0 && i - 1 < chars.len() {
                         let ch = chars[i - 1];
                         if ch.is_alphanumeric() || ch == '_' || ch == '.' || ch == '@' {
                             word_len += 1;

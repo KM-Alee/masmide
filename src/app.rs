@@ -517,10 +517,10 @@ impl App {
     pub fn trigger_autocomplete(&mut self) {
         let buf = &self.editor.buffers[self.editor.active_buffer];
         let line = buf.cursor_y;
-        let col = buf.cursor_x;
+        let col_byte = buf.cursor_x;
 
         // Get the prefix (word being typed)
-        if col == 0 {
+        if col_byte == 0 {
             self.autocomplete.hide();
             return;
         }
@@ -528,9 +528,12 @@ impl App {
         let current_line = &buf.lines[line];
         let chars: Vec<char> = current_line.chars().collect();
 
-        // Find word start
-        let mut start = col;
-        while start > 0 {
+        // Convert byte position to character index
+        let col_char = current_line[..col_byte.min(current_line.len())].chars().count();
+
+        // Find word start (in character indices)
+        let mut start = col_char;
+        while start > 0 && start <= chars.len() {
             let c = chars[start - 1];
             if c.is_alphanumeric() || c == '_' || c == '.' || c == '@' {
                 start -= 1;
@@ -539,12 +542,12 @@ impl App {
             }
         }
 
-        if start == col {
+        if start == col_char {
             self.autocomplete.hide();
             return;
         }
 
-        let prefix: String = chars[start..col].iter().collect();
+        let prefix: String = chars[start..col_char].iter().collect();
 
         // Get symbols from current buffer
         let buffer_symbols = parse_buffer_symbols(&buf.lines);
@@ -839,9 +842,7 @@ impl App {
         }
 
         // Use editor's clipboard functionality
-        self.editor.yank_buffer = content.clone();
-        if let Some(ref mut clipboard) = self.editor.clipboard {
-            let _ = clipboard.set_text(content);
-        }
+        use crate::ui::editor::clipboard::YankType;
+        self.editor.clipboard.copy(&content, YankType::Char);
     }
 }

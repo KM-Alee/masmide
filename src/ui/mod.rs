@@ -1,6 +1,7 @@
 pub mod autocomplete;
 pub mod command_bar;
 pub mod editor;
+pub mod editor_render;
 pub mod file_tree;
 pub mod help;
 pub mod hover;
