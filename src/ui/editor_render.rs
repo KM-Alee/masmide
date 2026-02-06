@@ -46,6 +46,20 @@ pub enum EditorAction {
         col: usize,
         deleted_content: String,
     },
+    InsertText {
+        start_line: usize,
+        start_col: usize,
+        end_line: usize,
+        end_col: usize,
+        text: String,
+    },
+    DeleteText {
+        start_line: usize,
+        start_col: usize,
+        end_line: usize,
+        end_col: usize,
+        text: String,
+    },
     Batch(Vec<EditorAction>),
 }
 
@@ -192,8 +206,7 @@ pub struct EditorState {
     // Undo/Redo
     pub undo_stack: UndoStack,
     // Clipboard
-    pub clipboard: Option<arboard::Clipboard>,
-    pub yank_buffer: String,
+    pub clipboard: crate::ui::editor::clipboard::Clipboard,
     // Jump stack for go-to-definition navigation
     pub jump_stack: Vec<(PathBuf, usize, usize)>, // (file, line, col)
 }
@@ -209,8 +222,7 @@ impl EditorState {
             search_matches: Vec::new(),
             current_match: 0,
             undo_stack: UndoStack::default(),
-            clipboard: arboard::Clipboard::new().ok(),
-            yank_buffer: String::new(),
+            clipboard: crate::ui::editor::clipboard::Clipboard::new(),
             jump_stack: Vec::new(),
         }
     }
@@ -663,8 +675,7 @@ impl EditorState {
             }
         };
 
-        self.yank_buffer = content.clone() + "\n";
-        self.set_system_clipboard(&self.yank_buffer.clone());
+        self.clipboard.copy(&(content.clone() + "\n"), crate::ui::editor::clipboard::YankType::Line);
 
         if was_single {
             if !content.is_empty() {
@@ -922,6 +933,24 @@ impl EditorState {
                     buf.modified = true;
                 }
             }
+            EditorAction::InsertText {
+                start_line,
+                start_col,
+                text,
+                ..
+            } => {
+                // Undo insert text = delete the text
+                self.undo_insert_text(*start_line, *start_col, text);
+            }
+            EditorAction::DeleteText {
+                start_line,
+                start_col,
+                text,
+                ..
+            } => {
+                // Undo delete text = insert the text back
+                self.redo_insert_text(*start_line, *start_col, text);
+            }
             EditorAction::Batch(actions) => {
                 for action in actions.iter().rev() {
                     self.apply_undo_action(action);
@@ -1003,6 +1032,24 @@ impl EditorState {
                     buf.modified = true;
                 }
             }
+            EditorAction::InsertText {
+                start_line,
+                start_col,
+                text,
+                ..
+            } => {
+                // Redo insert text
+                self.redo_insert_text(*start_line, *start_col, text);
+            }
+            EditorAction::DeleteText {
+                start_line,
+                start_col,
+                text,
+                ..
+            } => {
+                // Redo delete text = delete the text
+                self.undo_insert_text(*start_line, *start_col, text);
+            }
             EditorAction::Batch(actions) => {
                 for action in actions.iter() {
                     self.apply_redo_action(action);
@@ -1013,98 +1060,262 @@ impl EditorState {
 
     // ========== Clipboard ==========
 
-    fn set_system_clipboard(&mut self, text: &str) {
-        if let Some(ref mut clipboard) = self.clipboard {
-            let _ = clipboard.set_text(text.to_string());
+
+
+    /// Helper for undoing InsertText action
+    fn undo_insert_text(&mut self, start_line: usize, start_col: usize, text: &str) {
+        let lines: Vec<&str> = text.split('\n').collect();
+        let buf = self.buf_mut();
+
+        if lines.len() == 1 {
+            // Single line - just remove the text
+            if start_line < buf.lines.len() {
+                let line = &mut buf.lines[start_line];
+                let start_byte = Self::byte_index_of_char(line, start_col);
+                let end_byte = start_byte + text.len();
+                if end_byte <= line.len() {
+                    line.drain(start_byte..end_byte);
+                    buf.cursor_y = start_line;
+                    buf.cursor_x = start_byte;
+                    buf.modified = true;
+                }
+            }
+        } else {
+            // Multi-line - need to remove inserted lines and rejoin
+            let end_line = start_line + lines.len() - 1;
+            if end_line < buf.lines.len() {
+                // Get the part before insert and after insert
+                let prefix = if start_line < buf.lines.len() {
+                    let line = &buf.lines[start_line];
+                    let start_byte = Self::byte_index_of_char(line, start_col);
+                    line[..start_byte].to_string()
+                } else {
+                    String::new()
+                };
+
+                let suffix = if end_line < buf.lines.len() {
+                    let last_line_len = lines[lines.len() - 1].len();
+                    buf.lines[end_line][last_line_len..].to_string()
+                } else {
+                    String::new()
+                };
+
+                // Remove the lines that were inserted
+                for _ in start_line..end_line {
+                    if start_line < buf.lines.len() {
+                        buf.lines.remove(start_line);
+                    }
+                }
+
+                // Reconstruct the original line
+                if start_line < buf.lines.len() {
+                    buf.lines[start_line] = prefix + &suffix;
+                }
+
+                buf.cursor_y = start_line;
+                buf.cursor_x = Self::byte_index_of_char(&buf.lines[start_line], start_col);
+                buf.modified = true;
+            }
         }
     }
 
-    fn get_system_clipboard(&mut self) -> Option<String> {
-        if let Some(ref mut clipboard) = self.clipboard {
-            clipboard.get_text().ok()
+    /// Helper for redoing InsertText action
+    fn redo_insert_text(&mut self, start_line: usize, start_col: usize, text: &str) {
+        let lines: Vec<&str> = text.split('\n').collect();
+        let buf = self.buf_mut();
+
+        if lines.len() == 1 {
+            // Single line paste
+            if start_line < buf.lines.len() {
+                let line = &mut buf.lines[start_line];
+                let insert_pos = Self::byte_index_of_char(line, start_col);
+                line.insert_str(insert_pos, text);
+                buf.cursor_x = insert_pos + text.len();
+                buf.cursor_y = start_line;
+                buf.modified = true;
+            }
         } else {
-            None
+            // Multi-line paste
+            if start_line < buf.lines.len() {
+                let current_line = &buf.lines[start_line];
+                let insert_pos = Self::byte_index_of_char(current_line, start_col);
+
+                let prefix = current_line[..insert_pos].to_string();
+                let suffix = current_line[insert_pos..].to_string();
+
+                buf.lines[start_line] = prefix + lines[0];
+
+                for (i, line_text) in lines.iter().enumerate().skip(1).take(lines.len() - 2) {
+                    buf.lines.insert(start_line + i, line_text.to_string());
+                }
+
+                let last_line_text = lines[lines.len() - 1];
+                let end_line = start_line + lines.len() - 1;
+                buf.lines
+                    .insert(end_line, last_line_text.to_string() + &suffix);
+
+                buf.cursor_y = end_line;
+                buf.cursor_x = last_line_text.len();
+                buf.modified = true;
+            }
         }
+    }
+
+    /// Insert text inline (may span multiple lines) as a single undo action
+    /// COMPLETELY REWRITTEN for correctness and speed
+    fn paste_text_inline(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+
+        let (start_line, start_col) = {
+            let buf = self.buf();
+            (buf.cursor_y, buf.cursor_x)
+        };
+
+        let buf = self.buf_mut();
+        if start_line >= buf.lines.len() {
+            return;
+        }
+
+        // Get current line and proper insert position
+        let current_line = buf.lines[start_line].clone();
+        let insert_pos = Self::clamp_to_char_boundary(&current_line, start_col.min(current_line.len()));
+        let start_col_char = Self::char_index_at_byte(&current_line, insert_pos);
+
+        // Split pasted text by newlines - PRESERVE EMPTY LINES
+        let paste_lines: Vec<&str> = text.split('\n').collect();
+
+        if paste_lines.len() == 1 {
+            // ===== SINGLE LINE PASTE =====
+            let line = &mut buf.lines[start_line];
+            line.insert_str(insert_pos, text);
+            
+            let new_cursor_x = insert_pos + text.len();
+            buf.cursor_x = new_cursor_x;
+            buf.cursor_y = start_line;
+            buf.modified = true;
+
+            let end_col_char = Self::char_index_at_byte(line, new_cursor_x);
+            
+            self.undo_stack.push(EditorAction::InsertText {
+                start_line,
+                start_col: start_col_char,
+                end_line: start_line,
+                end_col: end_col_char,
+                text: text.to_string(),
+            });
+        } else {
+            // ===== MULTI-LINE PASTE =====
+            // Split current line into prefix and suffix
+            let prefix = current_line[..insert_pos].to_string();
+            let suffix = current_line[insert_pos..].to_string();
+
+            // Replace current line with: prefix + first pasted line
+            buf.lines[start_line] = format!("{}{}", prefix, paste_lines[0]);
+
+            // Insert ALL remaining lines (middle + last)
+            for i in 1..paste_lines.len() {
+                if i == paste_lines.len() - 1 {
+                    // Last pasted line gets the suffix
+                    buf.lines.insert(start_line + i, format!("{}{}", paste_lines[i], suffix));
+                } else {
+                    // Middle lines: insert exactly as-is (NO TRIMMING, NO INDENT!)
+                    buf.lines.insert(start_line + i, paste_lines[i].to_string());
+                }
+            }
+
+            // Position cursor at end of last pasted line (before suffix)
+            let end_line = start_line + paste_lines.len() - 1;
+            let last_pasted_line = paste_lines[paste_lines.len() - 1];
+            buf.cursor_y = end_line;
+            // Set cursor to byte position at end of pasted text
+            buf.cursor_x = last_pasted_line.len();
+            buf.modified = true;
+
+            let end_col_char = last_pasted_line.chars().count();
+
+            self.undo_stack.push(EditorAction::InsertText {
+                start_line,
+                start_col: start_col_char,
+                end_line,
+                end_col: end_col_char,
+                text: text.to_string(),
+            });
+        }
+
+        self.clear_search();
     }
 
     pub fn yank_line(&mut self) {
         let buf = self.buf();
         if buf.cursor_y < buf.lines.len() {
             let content = buf.lines[buf.cursor_y].clone() + "\n";
-            self.yank_buffer = content.clone();
-            self.set_system_clipboard(&content);
+            self.clipboard.copy(&content, crate::ui::editor::clipboard::YankType::Line);
         }
     }
 
     pub fn paste_after(&mut self) {
-        let text = self
-            .get_system_clipboard()
-            .unwrap_or_else(|| self.yank_buffer.clone());
+        let (text, yank_type) = match self.clipboard.paste() {
+            Some(v) => v,
+            None => return,
+        };
 
         if text.is_empty() {
             return;
         }
 
-        if text.ends_with('\n') {
-            // Line paste - paste on next line
-            let line_content = text.trim_end_matches('\n').to_string();
-            let insert_at = {
-                let buf = self.buf_mut();
-                let at = buf.cursor_y + 1;
-                buf.lines.insert(at, line_content.clone());
-                buf.cursor_y = at;
-                buf.cursor_x = 0;
-                buf.modified = true;
-                at
-            };
-            self.undo_stack.push(EditorAction::InsertLine {
-                line_num: insert_at,
-                content: line_content,
-            });
-        } else {
-            // Character paste
-            for ch in text.chars() {
-                if ch == '\n' {
-                    self.insert_newline();
-                } else {
-                    self.insert_char(ch);
-                }
+        match yank_type {
+            crate::ui::editor::clipboard::YankType::Line => {
+                let line_content = text.trim_end_matches('\n').to_string();
+                let insert_at = {
+                    let buf = self.buf_mut();
+                    let at = buf.cursor_y + 1;
+                    buf.lines.insert(at, line_content.clone());
+                    buf.cursor_y = at;
+                    buf.cursor_x = 0;
+                    buf.modified = true;
+                    at
+                };
+                self.undo_stack.push(EditorAction::InsertLine {
+                    line_num: insert_at,
+                    content: line_content,
+                });
+            }
+            crate::ui::editor::clipboard::YankType::Char => {
+                self.paste_text_inline(&text);
             }
         }
     }
 
     pub fn paste_before(&mut self) {
-        let text = self
-            .get_system_clipboard()
-            .unwrap_or_else(|| self.yank_buffer.clone());
+        let (text, yank_type) = match self.clipboard.paste() {
+            Some(v) => v,
+            None => return,
+        };
 
         if text.is_empty() {
             return;
         }
 
-        if text.ends_with('\n') {
-            // Line paste - paste on current line, push content down
-            let line_content = text.trim_end_matches('\n').to_string();
-            let insert_at = {
-                let buf = self.buf_mut();
-                let at = buf.cursor_y;
-                buf.lines.insert(at, line_content.clone());
-                buf.cursor_x = 0;
-                buf.modified = true;
-                at
-            };
-            self.undo_stack.push(EditorAction::InsertLine {
-                line_num: insert_at,
-                content: line_content,
-            });
-        } else {
-            // Character paste at cursor
-            for ch in text.chars() {
-                if ch == '\n' {
-                    self.insert_newline();
-                } else {
-                    self.insert_char(ch);
-                }
+        match yank_type {
+            crate::ui::editor::clipboard::YankType::Line => {
+                let line_content = text.trim_end_matches('\n').to_string();
+                let insert_at = {
+                    let buf = self.buf_mut();
+                    let at = buf.cursor_y;
+                    buf.lines.insert(at, line_content.clone());
+                    buf.cursor_x = 0;
+                    buf.modified = true;
+                    at
+                };
+                self.undo_stack.push(EditorAction::InsertLine {
+                    line_num: insert_at,
+                    content: line_content,
+                });
+            }
+            crate::ui::editor::clipboard::YankType::Char => {
+                self.paste_text_inline(&text);
             }
         }
     }
@@ -1209,8 +1420,7 @@ impl EditorState {
 
     pub fn yank_selection(&mut self) -> bool {
         if let Some(text) = self.get_selected_text() {
-            self.yank_buffer = text.clone();
-            self.set_system_clipboard(&text);
+            self.clipboard.copy(&text, crate::ui::editor::clipboard::YankType::Char);
             self.clear_selection();
             true
         } else {
@@ -1228,8 +1438,7 @@ impl EditorState {
 
         // Yank first
         if let Some(text) = self.get_selected_text() {
-            self.yank_buffer = text.clone();
-            self.set_system_clipboard(&text);
+            self.clipboard.copy(&text, crate::ui::editor::clipboard::YankType::Char);
         }
 
         let buf = self.buf_mut();
@@ -1663,18 +1872,21 @@ impl EditorState {
         let line = &buf.lines[buf.cursor_y];
         let chars: Vec<char> = line.chars().collect();
 
-        if buf.cursor_x >= chars.len() {
+        // Convert byte position to character index
+        let cursor_char_idx = Self::char_index_at_byte(line, buf.cursor_x);
+
+        if cursor_char_idx >= chars.len() {
             return None;
         }
 
         // Check if cursor is on a valid identifier character
-        let c = chars[buf.cursor_x];
+        let c = chars[cursor_char_idx];
         if !c.is_alphanumeric() && c != '_' && c != '@' && c != '?' {
             return None;
         }
 
         // Find word start
-        let mut start = buf.cursor_x;
+        let mut start = cursor_char_idx;
         while start > 0 {
             let prev = chars[start - 1];
             if prev.is_alphanumeric() || prev == '_' || prev == '@' || prev == '?' {
@@ -1685,7 +1897,7 @@ impl EditorState {
         }
 
         // Find word end
-        let mut end = buf.cursor_x;
+        let mut end = cursor_char_idx;
         while end < chars.len() {
             let ch = chars[end];
             if ch.is_alphanumeric() || ch == '_' || ch == '@' || ch == '?' {
@@ -1821,11 +2033,14 @@ impl EditorState {
         let line = &buf.lines[buf.cursor_y];
         let chars: Vec<char> = line.chars().collect();
 
-        if buf.cursor_x >= chars.len() {
+        // Convert byte position to character index
+        let cursor_char_idx = Self::char_index_at_byte(line, buf.cursor_x);
+
+        if cursor_char_idx >= chars.len() {
             return None;
         }
 
-        let current = chars[buf.cursor_x];
+        let current = chars[cursor_char_idx];
         let (target, forward) = match current {
             '(' => (')', true),
             ')' => ('(', false),
@@ -1929,7 +2144,7 @@ impl std::ops::Deref for EditorState {
 pub fn render(
     frame: &mut Frame,
     area: Rect,
-    state: &EditorState,
+    state: &crate::ui::editor::EditorState,
     focused: bool,
     theme: &Theme,
     diagnostics: &[Diagnostic],

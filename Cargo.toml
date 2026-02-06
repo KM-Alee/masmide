@@ -1,6 +1,6 @@
 [package]
 name = "masmide"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Khawaja Ali <kali.bscs24seecs@seecs.com>"]
 description = "A TUI IDE for MASM development on Linux using JWasm, MinGW-w64, and Wine"
@@ -27,6 +27,7 @@ directories = "5.0"
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 arboard = "3.2"  # System clipboard support
+ropey = "1.6"  # Rope text buffer for proper text editing
 
 [profile.release]
 lto = true
