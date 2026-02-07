@@ -529,7 +529,9 @@ impl App {
         let chars: Vec<char> = current_line.chars().collect();
 
         // Convert byte position to character index
-        let col_char = current_line[..col_byte.min(current_line.len())].chars().count();
+        let col_char = current_line[..col_byte.min(current_line.len())]
+            .chars()
+            .count();
 
         // Find word start (in character indices)
         let mut start = col_char;

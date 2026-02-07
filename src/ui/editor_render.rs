@@ -675,7 +675,10 @@ impl EditorState {
             }
         };
 
-        self.clipboard.copy(&(content.clone() + "\n"), crate::ui::editor::clipboard::YankType::Line);
+        self.clipboard.copy(
+            &(content.clone() + "\n"),
+            crate::ui::editor::clipboard::YankType::Line,
+        );
 
         if was_single {
             if !content.is_empty() {
@@ -1060,8 +1063,6 @@ impl EditorState {
 
     // ========== Clipboard ==========
 
-
-
     /// Helper for undoing InsertText action
     fn undo_insert_text(&mut self, start_line: usize, start_col: usize, text: &str) {
         let lines: Vec<&str> = text.split('\n').collect();
@@ -1180,7 +1181,8 @@ impl EditorState {
 
         // Get current line and proper insert position
         let current_line = buf.lines[start_line].clone();
-        let insert_pos = Self::clamp_to_char_boundary(&current_line, start_col.min(current_line.len()));
+        let insert_pos =
+            Self::clamp_to_char_boundary(&current_line, start_col.min(current_line.len()));
         let start_col_char = Self::char_index_at_byte(&current_line, insert_pos);
 
         // Split pasted text by newlines - PRESERVE EMPTY LINES
@@ -1190,14 +1192,14 @@ impl EditorState {
             // ===== SINGLE LINE PASTE =====
             let line = &mut buf.lines[start_line];
             line.insert_str(insert_pos, text);
-            
+
             let new_cursor_x = insert_pos + text.len();
             buf.cursor_x = new_cursor_x;
             buf.cursor_y = start_line;
             buf.modified = true;
 
             let end_col_char = Self::char_index_at_byte(line, new_cursor_x);
-            
+
             self.undo_stack.push(EditorAction::InsertText {
                 start_line,
                 start_col: start_col_char,
@@ -1218,7 +1220,8 @@ impl EditorState {
             for i in 1..paste_lines.len() {
                 if i == paste_lines.len() - 1 {
                     // Last pasted line gets the suffix
-                    buf.lines.insert(start_line + i, format!("{}{}", paste_lines[i], suffix));
+                    buf.lines
+                        .insert(start_line + i, format!("{}{}", paste_lines[i], suffix));
                 } else {
                     // Middle lines: insert exactly as-is (NO TRIMMING, NO INDENT!)
                     buf.lines.insert(start_line + i, paste_lines[i].to_string());
@@ -1251,7 +1254,8 @@ impl EditorState {
         let buf = self.buf();
         if buf.cursor_y < buf.lines.len() {
             let content = buf.lines[buf.cursor_y].clone() + "\n";
-            self.clipboard.copy(&content, crate::ui::editor::clipboard::YankType::Line);
+            self.clipboard
+                .copy(&content, crate::ui::editor::clipboard::YankType::Line);
         }
     }
 
@@ -1420,7 +1424,8 @@ impl EditorState {
 
     pub fn yank_selection(&mut self) -> bool {
         if let Some(text) = self.get_selected_text() {
-            self.clipboard.copy(&text, crate::ui::editor::clipboard::YankType::Char);
+            self.clipboard
+                .copy(&text, crate::ui::editor::clipboard::YankType::Char);
             self.clear_selection();
             true
         } else {
@@ -1438,7 +1443,8 @@ impl EditorState {
 
         // Yank first
         if let Some(text) = self.get_selected_text() {
-            self.clipboard.copy(&text, crate::ui::editor::clipboard::YankType::Char);
+            self.clipboard
+                .copy(&text, crate::ui::editor::clipboard::YankType::Char);
         }
 
         let buf = self.buf_mut();

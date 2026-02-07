@@ -7,19 +7,19 @@ use std::path::PathBuf;
 /// Now using ropey::Rope for proper text editing semantics
 #[derive(Debug, Clone)]
 pub struct Buffer {
-    text: Rope,  // Private - use methods to access
-    pub cursor_x: usize,  // Byte position in current line
-    pub cursor_y: usize,  // Line number
+    text: Rope,          // Private - use methods to access
+    pub cursor_x: usize, // Byte position in current line
+    pub cursor_y: usize, // Line number
     pub scroll_offset: usize,
     pub file_path: Option<PathBuf>,
     pub modified: bool,
     // Selection state for visual mode
     pub selection_start: Option<(usize, usize)>, // (line, col_byte)
     pub selection_end: Option<(usize, usize)>,   // (line, col_byte)
-    
+
     // COMPATIBILITY: Provide Vec<String> interface for existing code
-    pub lines: Vec<String>,  // Cached copy of lines for compatibility
-    lines_dirty: bool,  // Track if cache needs refresh
+    pub lines: Vec<String>, // Cached copy of lines for compatibility
+    lines_dirty: bool,      // Track if cache needs refresh
 }
 
 impl Buffer {
@@ -39,10 +39,11 @@ impl Buffer {
             lines_dirty: false,
         }
     }
-    
+
     /// Sync lines cache from rope (call after modifications)
     pub fn sync_lines(&mut self) {
-        self.lines = self.text
+        self.lines = self
+            .text
             .lines()
             .map(|line| {
                 let s = line.to_string();
@@ -52,18 +53,18 @@ impl Buffer {
             .collect();
         self.lines_dirty = false;
     }
-    
+
     /// Sync rope from lines cache (call after modifying lines)
     pub fn sync_rope(&mut self) {
         self.text = Rope::from(self.lines.join("\n") + "\n");
         self.lines_dirty = false;
     }
-    
+
     /// Get reference to the rope (for advanced operations)
     pub fn text(&self) -> &Rope {
         &self.text
     }
-    
+
     /// Get mutable reference to the rope (for advanced operations)
     pub fn text_mut(&mut self) -> &mut Rope {
         self.lines_dirty = true;
@@ -94,7 +95,7 @@ impl Buffer {
 
         // Create rope from file content
         let text = if content.is_empty() {
-            Rope::from("\n")  // Empty file = one blank line
+            Rope::from("\n") // Empty file = one blank line
         } else {
             Rope::from(content)
         };
@@ -107,7 +108,7 @@ impl Buffer {
                 s.trim_end_matches('\n').to_string()
             })
             .collect();
-        
+
         Ok(Self {
             text,
             cursor_x: 0,
@@ -149,7 +150,7 @@ impl Buffer {
     }
 
     /// Helper: Get line slice for rendering
-    pub fn line_slice(&self, line_idx: usize) -> Option<ropey::RopeSlice> {
+    pub fn line_slice(&self, line_idx: usize) -> Option<ropey::RopeSlice<'_>> {
         if line_idx < self.text.len_lines() {
             Some(self.text.line(line_idx))
         } else {

@@ -157,7 +157,7 @@ impl EditorState {
         line.insert(col_b, c);
         buf.cursor_x = col_b + c.len_utf8();
         buf.modified = true;
-        buf.sync_rope();  // Sync rope after modifying lines
+        buf.sync_rope(); // Sync rope after modifying lines
 
         self.undo_stack.push(EditorAction::InsertChar {
             line: ln,
@@ -193,10 +193,11 @@ impl EditorState {
         };
 
         buf.cursor_y += 1;
-        buf.lines.insert(buf.cursor_y, format!("{}{}", indent, remainder));
+        buf.lines
+            .insert(buf.cursor_y, format!("{}{}", indent, remainder));
         buf.cursor_x = indent.len();
         buf.modified = true;
-        buf.sync_rope();  // Sync rope after modifying lines
+        buf.sync_rope(); // Sync rope after modifying lines
 
         self.undo_stack.push(EditorAction::SplitLine {
             line: ln,
@@ -226,7 +227,7 @@ impl EditorState {
                     line.drain(start..end);
                     buf.cursor_x = start;
                     buf.modified = true;
-                    buf.sync_rope();  // Sync rope after modifying lines
+                    buf.sync_rope(); // Sync rope after modifying lines
 
                     Some(EditorAction::DeleteChar {
                         line: line_num,
@@ -245,7 +246,7 @@ impl EditorState {
 
                 buf.cursor_x = prev_line.len();
                 buf.modified = true;
-                buf.sync_rope();  // Sync rope after modifying lines
+                buf.sync_rope(); // Sync rope after modifying lines
 
                 Some(EditorAction::JoinLines {
                     line: line_num - 1,
@@ -302,7 +303,7 @@ impl EditorState {
                         }
 
                         buf.modified = true;
-                        buf.sync_rope();  // Sync rope after modifying lines
+                        buf.sync_rope(); // Sync rope after modifying lines
                         Some(EditorAction::DeleteChar {
                             line: cursor_y,
                             col: col_char,
@@ -314,7 +315,7 @@ impl EditorState {
                     let join_col_char = buf.lines[cursor_y].chars().count();
                     buf.lines[cursor_y].push_str(&next_line);
                     buf.modified = true;
-                    buf.sync_rope();  // Sync rope after modifying lines
+                    buf.sync_rope(); // Sync rope after modifying lines
 
                     Some(EditorAction::JoinLines {
                         line: cursor_y,
@@ -344,19 +345,20 @@ impl EditorState {
                 }
                 CursorOps::clamp_cursor_x(buf);
                 buf.modified = true;
-                buf.sync_rope();  // Sync rope after modifying lines
+                buf.sync_rope(); // Sync rope after modifying lines
                 (ln, c, false)
             } else {
                 let c = buf.lines[0].clone();
                 buf.lines[0].clear();
                 buf.cursor_x = 0;
                 buf.modified = true;
-                buf.sync_rope();  // Sync rope after modifying lines
+                buf.sync_rope(); // Sync rope after modifying lines
                 (ln, c, true)
             }
         };
 
-        self.clipboard.copy(&(content.clone() + "\n"), YankType::Line);
+        self.clipboard
+            .copy(&(content.clone() + "\n"), YankType::Line);
 
         if was_single {
             if !content.is_empty() {
@@ -367,7 +369,8 @@ impl EditorState {
                 });
             }
         } else {
-            self.undo_stack.push(EditorAction::DeleteLine { line_num, content });
+            self.undo_stack
+                .push(EditorAction::DeleteLine { line_num, content });
         }
         self.clear_search();
     }
@@ -504,7 +507,8 @@ impl EditorState {
         if let Some(((start_line, start_col), (end_line, end_col))) =
             SelectionOps::get_selection_range(buf)
         {
-            let text = SelectionOps::extract_selection_text(buf, start_line, start_col, end_line, end_col);
+            let text =
+                SelectionOps::extract_selection_text(buf, start_line, start_col, end_line, end_col);
             self.clipboard.copy(&text, YankType::Char);
             true
         } else {
@@ -514,11 +518,7 @@ impl EditorState {
 
     pub fn delete_selection(&mut self) -> bool {
         let buf = &mut self.buffers[self.active_buffer];
-        SelectionOps::delete_selection(
-            buf,
-            &mut self.undo_stack,
-            &mut self.clipboard,
-        )
+        SelectionOps::delete_selection(buf, &mut self.undo_stack, &mut self.clipboard)
     }
 
     // ========== Search Operations ==========
@@ -960,7 +960,8 @@ impl EditorState {
         if let Some((line, col)) = self.find_definition_in_buffer(&word) {
             let buf = self.buf();
             if let Some(file_path) = buf.file_path.clone() {
-                self.jump_stack.push((file_path, buf.cursor_y, buf.cursor_x));
+                self.jump_stack
+                    .push((file_path, buf.cursor_y, buf.cursor_x));
             }
             let buf = self.buf_mut();
             buf.cursor_y = line;
@@ -1019,9 +1020,7 @@ impl EditorState {
         let chars: Vec<char> = line.chars().collect();
         let mut cursor_char_idx = CursorOps::char_index_at_byte(line, buf.cursor_x);
 
-        if cursor_char_idx > 0 {
-            cursor_char_idx -= 1;
-        }
+        cursor_char_idx = cursor_char_idx.saturating_sub(1);
 
         while cursor_char_idx > 0 && chars[cursor_char_idx].is_whitespace() {
             cursor_char_idx -= 1;
@@ -1089,8 +1088,8 @@ impl EditorState {
         let chars: Vec<char> = line.chars().collect();
         let cursor_char_idx = CursorOps::char_index_at_byte(line, buf.cursor_x);
 
-        for i in (cursor_char_idx + 1)..chars.len() {
-            if chars[i] == target {
+        for (i, &ch) in chars.iter().enumerate().skip(cursor_char_idx + 1) {
+            if ch == target {
                 buf.cursor_x = CursorOps::byte_index_of_char(line, i);
                 return true;
             }
@@ -1127,8 +1126,8 @@ impl EditorState {
         let chars: Vec<char> = line.chars().collect();
         let cursor_char_idx = CursorOps::char_index_at_byte(line, buf.cursor_x);
 
-        for i in (cursor_char_idx + 1)..chars.len() {
-            if chars[i] == target {
+        for (i, &ch) in chars.iter().enumerate().skip(cursor_char_idx + 1) {
+            if ch == target {
                 buf.cursor_x = CursorOps::byte_index_of_char(line, i.saturating_sub(1));
                 return true;
             }

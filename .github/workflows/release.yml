@@ -14,46 +14,82 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  build-jwasm:
+    name: Build JWasm (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            cc: gcc
+            strip: strip
+          - arch: aarch64
+            cc: aarch64-linux-gnu-gcc
+            strip: aarch64-linux-gnu-strip
+
+    steps:
+      - name: Install cross-compiler
+        if: matrix.arch == 'aarch64'
+        run: sudo apt-get update -qq && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Clone and build JWasm
+        run: |
+          git clone --depth 1 https://github.com/JWasm/JWasm.git /tmp/jwasm-src
+          cd /tmp/jwasm-src
+          sed -i "s|^CC = gcc|CC = ${{ matrix.cc }}|" GccUnix.mak
+          make -f GccUnix.mak
+          cp build/GccUnixR/jwasm /tmp/jwasm-binary
+          ${{ matrix.strip }} /tmp/jwasm-binary || true
+          chmod +x /tmp/jwasm-binary
+
+      - name: Upload JWasm binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: jwasm-${{ matrix.arch }}
+          path: /tmp/jwasm-binary
+
   build:
     name: Build ${{ matrix.target }}
+    needs: build-jwasm
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux x86_64 (glibc)
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             arch: x86_64
+            jwasm_arch: x86_64
             cross: false
-          
-          # Linux aarch64 (glibc)
+
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             arch: aarch64
+            jwasm_arch: aarch64
             cross: true
-          
-          # Linux x86_64 (musl - static binary)
+
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             arch: x86_64-musl
+            jwasm_arch: x86_64
             cross: true
 
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      
+
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      
+
       - name: Install cross
         if: matrix.cross
         run: cargo install cross --git https://github.com/cross-rs/cross
-      
+
       - name: Build release binary
         run: |
           if [ "${{ matrix.cross }}" = "true" ]; then
@@ -61,20 +97,24 @@ jobs:
           else
             cargo build --release --target ${{ matrix.target }}
           fi
-      
+
       - name: Strip binary
         run: |
           if [ "${{ matrix.cross }}" = "true" ] && [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
-            # Cross-compiled aarch64 needs specific strip
             docker run --rm -v $PWD:/workspace ghcr.io/cross-rs/${{ matrix.target }}:main \
               aarch64-linux-gnu-strip /workspace/target/${{ matrix.target }}/release/masmide
           elif [ "${{ matrix.arch }}" = "x86_64-musl" ]; then
-            # musl binary - strip with standard strip
             strip target/${{ matrix.target }}/release/masmide || true
           else
             strip target/${{ matrix.target }}/release/masmide
           fi
-      
+
+      - name: Download JWasm binary
+        uses: actions/download-artifact@v4
+        with:
+          name: jwasm-${{ matrix.jwasm_arch }}
+          path: /tmp/jwasm
+
       - name: Determine version
         id: version
         run: |
@@ -83,31 +123,33 @@ jobs:
           else
             echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           fi
-      
+
       - name: Create tarball
         run: |
           VERSION=${{ steps.version.outputs.version }}
           ARCHIVE_NAME="masmide-${VERSION}-linux-${{ matrix.arch }}"
-          
+
           mkdir -p "release/${ARCHIVE_NAME}"
           cp target/${{ matrix.target }}/release/masmide "release/${ARCHIVE_NAME}/"
           cp README.md LICENSE "release/${ARCHIVE_NAME}/"
           cp install.sh uninstall.sh "release/${ARCHIVE_NAME}/"
-          
+
+          # Bundle pre-built JWasm binary
+          cp /tmp/jwasm/jwasm-binary "release/${ARCHIVE_NAME}/jwasm"
+          chmod +x "release/${ARCHIVE_NAME}/jwasm"
+
           # Copy Irvine library (excluding large Examples folder)
           mkdir -p "release/${ARCHIVE_NAME}/Irvine"
           cp Irvine/*.lib Irvine/*.Lib Irvine/*.obj Irvine/*.inc "release/${ARCHIVE_NAME}/Irvine/" 2>/dev/null || true
-          
+
           # Copy templates
           cp -r templates "release/${ARCHIVE_NAME}/"
-          
+
           # Create archives
           cd release
           tar -czvf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
-          
-          # Also create zip for convenience
           zip -r "${ARCHIVE_NAME}.zip" "${ARCHIVE_NAME}"
-      
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -124,7 +166,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Determine version
         id: version
         run: |
@@ -133,24 +175,24 @@ jobs:
           else
             echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           fi
-      
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-      
+
       - name: Collect release files
         run: |
           mkdir -p release-files
           find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-files/ \;
           ls -la release-files/
-      
+
       - name: Generate checksums
         run: |
           cd release-files
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
-      
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -176,6 +218,8 @@ jobs:
             2. Extract: `tar -xzf masmide-*.tar.gz`
             3. Run: `cd masmide-* && sudo ./install.sh`
 
+            > **Note:** JWasm is bundled — no need to build or install it separately.
+
             ### Architectures
             - `x86_64` - Standard Linux (glibc) for Intel/AMD 64-bit
             - `aarch64` - ARM 64-bit (Raspberry Pi 4, Apple Silicon VMs, etc.)
@@ -194,9 +238,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: dtolnay/rust-toolchain@stable
-      
+
       - name: Publish to crates.io
         run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
         continue-on-error: true

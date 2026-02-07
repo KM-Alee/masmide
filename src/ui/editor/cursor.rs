@@ -5,7 +5,6 @@ use super::buffer::Buffer;
 pub struct CursorOps;
 
 impl CursorOps {
-
     /// DEPRECATED: No longer needed with ropey
     pub fn clamp_to_char_boundary(s: &str, idx: usize) -> usize {
         let idx = idx.min(s.len());

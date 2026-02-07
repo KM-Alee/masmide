@@ -27,10 +27,43 @@ pub struct Pipeline {
     last_exe: Option<PathBuf>,
 }
 
+/// Resolve the JWasm binary path by checking multiple locations:
+///   1. The configured path (if absolute and exists)
+///   2. Next to the masmide binary (sibling in same directory)
+///   3. /usr/local/bin/jwasm
+///   4. $PATH lookup (bare name like "jwasm")
+fn resolve_jwasm(configured: &Path) -> PathBuf {
+    // If the configured path is absolute and exists, use it directly
+    if configured.is_absolute() && configured.exists() {
+        return configured.to_path_buf();
+    }
+
+    // Check next to the current executable
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let sibling = dir.join("jwasm");
+            if sibling.exists() {
+                return sibling;
+            }
+        }
+    }
+
+    // Check /usr/local/bin/jwasm
+    let usr_local = PathBuf::from("/usr/local/bin/jwasm");
+    if usr_local.exists() {
+        return usr_local;
+    }
+
+    // Fall back to the configured value (will rely on $PATH lookup via Command::new)
+    configured.to_path_buf()
+}
+
 impl Pipeline {
     pub fn new(config: &Config, project_config: &ProjectConfig, project_dir: &Path) -> Self {
+        let jwasm_path = resolve_jwasm(&config.toolchain.jwasm_path);
+
         Self {
-            jwasm_path: config.toolchain.jwasm_path.clone(),
+            jwasm_path,
             linker_path: config.toolchain.linker_path.clone(),
             wine_path: config.toolchain.wine_path.clone(),
             irvine_lib_path: config.toolchain.irvine_lib_path.clone(),
@@ -83,7 +116,7 @@ impl Pipeline {
             .arg(&source_file)
             .current_dir(&self.project_dir)
             .output()
-            .context("Failed to execute jwasm")?;
+            .context("Failed to execute jwasm. Is it installed? Run the install script or place jwasm next to the masmide binary.")?;
 
         // Extract only error/warning lines from jwasm output
         let jwasm_stdout = String::from_utf8_lossy(&jwasm_result.stdout);

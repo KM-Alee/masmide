@@ -739,10 +739,10 @@ fn handle_insert_mode(app: &mut App, key: KeyEvent) -> Result<Option<Action>> {
                 if cursor_byte >= 2 {
                     let line = &buf.lines[buf.cursor_y];
                     let chars: Vec<char> = line.chars().collect();
-                    
+
                     // Convert byte position to character index
                     let char_pos = line[..cursor_byte.min(line.len())].chars().count();
-                    
+
                     // Check if we have at least 2 identifier chars
                     let mut word_len = 0;
                     let mut i = char_pos;

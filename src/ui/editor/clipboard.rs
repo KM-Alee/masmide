@@ -50,10 +50,7 @@ impl Clipboard {
         use std::process::{Command, Stdio};
 
         // Try wl-copy first (Wayland), then xclip (X11)
-        let commands: &[&[&str]] = &[
-            &["wl-copy"],
-            &["xclip", "-selection", "clipboard"],
-        ];
+        let commands: &[&[&str]] = &[&["wl-copy"], &["xclip", "-selection", "clipboard"]];
 
         for cmd in commands {
             if let Ok(mut child) = Command::new(cmd[0])
@@ -241,8 +238,7 @@ pub fn undo_insert_text(buf: &mut Buffer, start_line: usize, start_col: usize, t
             }
 
             buf.cursor_y = start_line;
-            buf.cursor_x =
-                CursorOps::byte_index_of_char(&buf.lines[start_line], start_col);
+            buf.cursor_x = CursorOps::byte_index_of_char(&buf.lines[start_line], start_col);
             buf.modified = true;
         }
     }
@@ -261,28 +257,26 @@ pub fn redo_insert_text(buf: &mut Buffer, start_line: usize, start_col: usize, t
             buf.cursor_y = start_line;
             buf.modified = true;
         }
-    } else {
-        if start_line < buf.lines.len() {
-            let current_line = &buf.lines[start_line];
-            let insert_pos = CursorOps::byte_index_of_char(current_line, start_col);
+    } else if start_line < buf.lines.len() {
+        let current_line = &buf.lines[start_line];
+        let insert_pos = CursorOps::byte_index_of_char(current_line, start_col);
 
-            let prefix = current_line[..insert_pos].to_string();
-            let suffix = current_line[insert_pos..].to_string();
+        let prefix = current_line[..insert_pos].to_string();
+        let suffix = current_line[insert_pos..].to_string();
 
-            buf.lines[start_line] = prefix + lines[0];
+        buf.lines[start_line] = prefix + lines[0];
 
-            for (i, line_text) in lines.iter().enumerate().skip(1).take(lines.len() - 2) {
-                buf.lines.insert(start_line + i, line_text.to_string());
-            }
-
-            let last_line_text = lines[lines.len() - 1];
-            let end_line = start_line + lines.len() - 1;
-            buf.lines
-                .insert(end_line, last_line_text.to_string() + &suffix);
-
-            buf.cursor_y = end_line;
-            buf.cursor_x = last_line_text.len();
-            buf.modified = true;
+        for (i, line_text) in lines.iter().enumerate().skip(1).take(lines.len() - 2) {
+            buf.lines.insert(start_line + i, line_text.to_string());
         }
+
+        let last_line_text = lines[lines.len() - 1];
+        let end_line = start_line + lines.len() - 1;
+        buf.lines
+            .insert(end_line, last_line_text.to_string() + &suffix);
+
+        buf.cursor_y = end_line;
+        buf.cursor_x = last_line_text.len();
+        buf.modified = true;
     }
 }

@@ -83,11 +83,7 @@ impl SearchState {
                 None
             }
         } else {
-            Some(format!(
-                "{}/{}",
-                self.current_match + 1,
-                self.matches.len()
-            ))
+            Some(format!("{}/{}", self.current_match + 1, self.matches.len()))
         }
     }
 }

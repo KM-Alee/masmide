@@ -46,12 +46,8 @@ impl SelectionOps {
     }
 
     /// Yank (copy) selected text
-    pub fn yank_selection(
-        buf: &Buffer,
-        clipboard: &mut Clipboard,
-    ) -> bool {
-        if let Some(((start_line, start_col), (end_line, end_col))) =
-            Self::get_selection_range(buf)
+    pub fn yank_selection(buf: &Buffer, clipboard: &mut Clipboard) -> bool {
+        if let Some(((start_line, start_col), (end_line, end_col))) = Self::get_selection_range(buf)
         {
             let text = Self::extract_selection_text(buf, start_line, start_col, end_line, end_col);
             clipboard.copy(&text, YankType::Char);
@@ -67,8 +63,7 @@ impl SelectionOps {
         undo_stack: &mut UndoStack,
         clipboard: &mut Clipboard,
     ) -> bool {
-        if let Some(((start_line, start_col), (end_line, end_col))) =
-            Self::get_selection_range(buf)
+        if let Some(((start_line, start_col), (end_line, end_col))) = Self::get_selection_range(buf)
         {
             let text = Self::extract_selection_text(buf, start_line, start_col, end_line, end_col);
             clipboard.copy(&text, YankType::Char);
