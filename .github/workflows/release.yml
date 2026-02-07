@@ -39,7 +39,7 @@ jobs:
           cd /tmp/jwasm-src
           sed -i "s|^CC = gcc|CC = ${{ matrix.cc }}|" GccUnix.mak
           make -f GccUnix.mak
-          cp build/GccUnixR/jwasm /tmp/jwasm-binary
+          cp GccUnixR/jwasm /tmp/jwasm-binary
           ${{ matrix.strip }} /tmp/jwasm-binary || true
           chmod +x /tmp/jwasm-binary
 
