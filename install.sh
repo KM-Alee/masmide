@@ -11,9 +11,13 @@ set -e
 # Run from the extracted release tarball:
 #   cd masmide-vX.Y.Z-linux-x86_64
 #   sudo ./install.sh
+#
+# Non-interactive:
+#   sudo ./install.sh --yes
 #===============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ASSUME_YES=0
 
 # Installation paths
 BIN_DIR="/usr/local/bin"
@@ -36,6 +40,61 @@ warn()    { echo -e "${YELLOW}[!]${NC} $1"; }
 error()   { echo -e "${RED}[x]${NC} $1"; exit 1; }
 step()    { echo -e "${BLUE}[>]${NC} ${BOLD}$1${NC}"; }
 substep() { echo -e "    ${CYAN}-${NC} $1"; }
+
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -y|--yes)
+                ASSUME_YES=1
+                ;;
+            -h|--help)
+                echo "Usage: ./install.sh [--yes]"
+                exit 0
+                ;;
+            *)
+                error "Unexpected argument: $1"
+                ;;
+        esac
+        shift
+    done
+}
+
+confirm() {
+    local prompt="$1"
+    local default_yes="$2"
+    local reply=""
+
+    if [ "$ASSUME_YES" -eq 1 ]; then
+        return 0
+    fi
+
+    if [ -r /dev/tty ]; then
+        if ! read -p "  $prompt " -n 1 -r reply < /dev/tty; then
+            echo
+            error "No interactive terminal available. Re-run with --yes to skip prompts."
+        fi
+        echo
+    elif [ -t 0 ]; then
+        if ! read -p "  $prompt " -n 1 -r reply; then
+            echo
+            error "No interactive terminal available. Re-run with --yes to skip prompts."
+        fi
+        echo
+    else
+        error "No interactive terminal available. Re-run with --yes to skip prompts."
+    fi
+
+    if [ -z "$reply" ]; then
+        [ "$default_yes" = "yes" ]
+        return
+    fi
+
+    case "$reply" in
+        [Yy]) return 0 ;;
+        [Nn]) return 1 ;;
+        *) [ "$default_yes" = "yes" ] ;;
+    esac
+}
 
 #-------------------------------------------------------------------------------
 # Distro detection
@@ -302,6 +361,8 @@ verify_installation() {
 # Main
 #-------------------------------------------------------------------------------
 main() {
+    parse_args "$@"
+
     echo
     echo -e "${BOLD}  masmide installer${NC}"
     echo -e "  TUI IDE for MASM development on Linux"
@@ -312,9 +373,9 @@ main() {
 
     if [ "$DISTRO_FAMILY" = "unknown" ]; then
         warn "Unsupported distribution. Dependency installation may need manual steps."
-        read -p "  Continue anyway? [y/N] " -n 1 -r
-        echo
-        [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
+        if ! confirm "Continue anyway? [y/N]" no; then
+            exit 1
+        fi
     fi
 
     echo
@@ -323,9 +384,9 @@ main() {
     echo "    - Irvine32 library to $LIB_DIR"
     echo "    - System packages: mingw-w64, wine"
     echo
-    read -p "  Proceed? [Y/n] " -n 1 -r
-    echo
-    [[ $REPLY =~ ^[Nn]$ ]] && exit 0
+    if ! confirm "Proceed? [Y/n]" yes; then
+        exit 0
+    fi
 
     echo
     ensure_sudo

@@ -10,11 +10,15 @@ set -e
 #
 # Or with a specific version:
 #   curl -sSL https://raw.githubusercontent.com/KM-Alee/masmide/main/scripts/install-remote.sh | bash -s -- v0.2.0
+#
+# Non-interactive:
+#   curl -sSL https://raw.githubusercontent.com/KM-Alee/masmide/main/scripts/install-remote.sh | bash -s -- --yes
 #===============================================================================
 
-VERSION="${1:-latest}"
 REPO="KM-Alee/masmide"
 TMP_DIR=$(mktemp -d)
+VERSION="latest"
+ASSUME_YES=0
 
 #-------------------------------------------------------------------------------
 # Colors
@@ -34,6 +38,65 @@ step()    { echo -e "${BLUE}[>]${NC} ${BOLD}$1${NC}"; }
 
 cleanup() { rm -rf "$TMP_DIR"; }
 trap cleanup EXIT
+
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -y|--yes)
+                ASSUME_YES=1
+                ;;
+            -h|--help)
+                echo "Usage: bash install-remote.sh [--yes] [version]"
+                exit 0
+                ;;
+            *)
+                if [ "$VERSION" = "latest" ]; then
+                    VERSION="$1"
+                else
+                    error "Unexpected argument: $1"
+                fi
+                ;;
+        esac
+        shift
+    done
+}
+
+confirm() {
+    local prompt="$1"
+    local default_yes="$2"
+    local reply=""
+
+    if [ "$ASSUME_YES" -eq 1 ]; then
+        return 0
+    fi
+
+    if [ -r /dev/tty ]; then
+        if ! read -p "  $prompt " -n 1 -r reply < /dev/tty; then
+            echo
+            error "No interactive terminal available. Re-run with --yes to skip prompts."
+        fi
+        echo
+    elif [ -t 0 ]; then
+        if ! read -p "  $prompt " -n 1 -r reply; then
+            echo
+            error "No interactive terminal available. Re-run with --yes to skip prompts."
+        fi
+        echo
+    else
+        error "No interactive terminal available. Re-run with --yes to skip prompts."
+    fi
+
+    if [ -z "$reply" ]; then
+        [ "$default_yes" = "yes" ]
+        return
+    fi
+
+    case "$reply" in
+        [Yy]) return 0 ;;
+        [Nn]) return 1 ;;
+        *) [ "$default_yes" = "yes" ] ;;
+    esac
+}
 
 #-------------------------------------------------------------------------------
 # System detection
@@ -71,6 +134,8 @@ download_release() {
 # Main
 #-------------------------------------------------------------------------------
 main() {
+    parse_args "$@"
+
     echo
     echo -e "${BOLD}  masmide remote installer${NC}"
     echo
@@ -97,9 +162,7 @@ main() {
     echo "    - Irvine32 library"
     echo "    - System packages: mingw-w64, wine"
     echo
-    read -p "  Proceed? [Y/n] " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Nn]$ ]]; then
+    if ! confirm "Proceed? [Y/n]" yes; then
         exit 0
     fi
 
@@ -122,7 +185,13 @@ main() {
         info "Running bundled installer..."
         echo
         chmod +x "$extracted/install.sh"
-        bash "$extracted/install.sh"
+        if [ "$ASSUME_YES" -eq 1 ]; then
+            bash "$extracted/install.sh" --yes
+        elif [ -r /dev/tty ]; then
+            bash "$extracted/install.sh" < /dev/tty
+        else
+            bash "$extracted/install.sh"
+        fi
     else
         error "install.sh not found in release archive"
     fi
